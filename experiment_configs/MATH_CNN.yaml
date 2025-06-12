@@ -1,0 +1,72 @@
+# 关闭用户交互模式
+copilot-mode: True
+
+# 研究主题：CNN结构综述与CIFAR10分类实验分析
+research-topic: "基于CIFAR-10的CNN结构综述与实验对比分析（含ResNet, DenseNet, SE-ResNet及Res2Net）"
+
+# 使用OpenAI API，默认设置即可
+api-key: "sk-1682c4fdbb2e461385ee2f4d7519334e"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "deepseek-chat"
+lit-review-backend: "deepseek-chat"
+
+# 基础语言设为中文
+language: "中文"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 5
+agentrxiv-papers: 5
+num-papers-to-write: 1
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 5
+papersolver-max-steps: 3
+lab-index: 1
+load-existing: False
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+task-notes:
+  plan-formulation:
+    - '你的任务是生成一篇Latex格式的CNN综述实验报告，面向CIFAR-10图像分类任务。'
+    - '包括经典CNN、ResNet、DenseNet、SE-ResNet、Res2Net五种网络结构的构建与对比实验。'
+    - '每种模型需给出网络结构（可print(net)）、训练loss曲线图与准确度曲线图。'
+    - '重点分析不同结构对训练收敛、泛化能力的影响，尤其关注残差连接（跳跃连接）机制的作用。'
+    - '扩展部分加入Res2Net结构并进行性能对比。'
+  data-preparation:
+    - '使用CIFAR-10数据集，利用torchvision.datasets加载，并进行标准归一化处理。'
+    - '训练集与验证集按标准划分，进行准确率与loss评估。'
+  running-experiments:
+    - '你需要使用PyTorch分别实现：'
+    - '- 一个简单的CNN'
+    - '- ResNet（可用BasicBlock）'
+    - '- DenseNet'
+    - '- SE-ResNet（在ResNet基础上增加SE模块）'
+    - '- Res2Net（在扩展部分实现）'
+    - '每个模型都需记录并保存loss和accuracy的曲线图，可使用matplotlib绘图。'
+    - '每个模型结构使用print(model)输出，并保存为文本/截图形式。'
+    - '训练过程中使用cross entropy loss与Adam优化器（或SGD）。'
+    - '每次训练需输出epoch、loss和accuracy，并绘制曲线图。'
+  results-interpretation:
+    - '分析不同网络结构在训练动态上的表现（loss曲线陡峭与否、准确率提升速度、最终准确率）。'
+    - '重点解释为什么ResNet/DenseNet/SE-ResNet/Res2Net表现不同，尤其从残差结构、特征复用、通道注意力等角度展开。'
+    - '分析Res2Net的模块结构、粒度层次的特征表示能力、与Dense连接或跳跃连接的不同。'
+  report-writing:
+    - '生成Latex格式的实验报告，结构如下：'
+    - '- 引言：介绍CNN发展与研究意义'
+    - '- 实验设置：模型结构、数据集、训练细节'
+    - '- 模型实现：五种网络结构代码概述与结构展示'
+    - '- 实验结果：loss与accuracy图 + 文字分析'
+    - '- 对比分析：模型之间的结构差异、训练行为对比'
+    - '- 扩展：Res2Net实验与分析'
+    - '- 结论与未来工作'
+    - '所有图表应使用matplotlib生成并保存在实验目录'
+    - 'LaTeX中插入图表，使用\\includegraphics 和\\begin{figure} 环境'
+
