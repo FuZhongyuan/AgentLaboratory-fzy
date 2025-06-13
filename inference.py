@@ -19,6 +19,7 @@ def curr_cost_est():
         "deepseek-chat": 1.00 / 1000000,
         "o1": 15.00 / 1000000,
         "o3-mini": 1.10 / 1000000,
+        "o4-mini": 1.10 / 1000000,
     }
     costmap_out = {
         "gpt-4o": 10.00/ 1000000,
@@ -29,10 +30,11 @@ def curr_cost_est():
         "deepseek-chat": 5.00 / 1000000,
         "o1": 60.00 / 1000000,
         "o3-mini": 4.40 / 1000000,
+        "o4-mini": 4.40 / 1000000,
     }
     return sum([costmap_in[_]*TOKENS_IN[_] for _ in TOKENS_IN]) + sum([costmap_out[_]*TOKENS_OUT[_] for _ in TOKENS_OUT])
 
-def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_api_key=None,  anthropic_api_key=None, tries=5, timeout=5.0, temp=None, print_cost=True, version="1.5"):
+def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_api_key=None,  anthropic_api_key=None,deepseek_api_key=None, tries=5, timeout=5.0, temp=None, print_cost=True, version="1.5"):
     preloaded_api = os.getenv('OPENAI_API_KEY')
     if openai_api_key is None and preloaded_api is not None:
         openai_api_key = preloaded_api
@@ -45,6 +47,8 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
         os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
     if gemini_api_key is not None:
         os.environ["GEMINI_API_KEY"] = gemini_api_key
+    if deepseek_api_key is not None:
+        os.environ["DEEPSEEK_API_KEY"] = deepseek_api_key
     for _ in range(tries):
         try:
             if model_str == "gpt-4o-mini" or model_str == "gpt4omini" or model_str == "gpt-4omini" or model_str == "gpt4o-mini":
@@ -186,8 +190,8 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                     completion = client.chat.completions.create(
                         model="o1-preview", messages=messages)
                 answer = completion.choices[0].message.content
-            elif model_str == "o3-mini-cn":
-                model_str = "o3-mini"
+            elif model_str == "deepseek-chat-yunwu":
+                model_str = "deepseek-chat"
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}]
@@ -195,22 +199,44 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                     raise Exception("Please upgrade your OpenAI version to use DeepSeek client")
                 else:
                     deepseek_client = OpenAI(
-                        api_key=os.getenv('DEEPSEEK_API_KEY'),
-                        base_url="https://yunwu.ai"
+                        api_key=os.getenv('OPENAI_API_KEY'),
+                        base_url="https://api.deepseek.com/v1"
                     )
                     if temp is None:
                         completion = deepseek_client.chat.completions.create(
-                            model="o3-mini",
+                            model="deepseek-chat",
                             messages=messages)
                     else:
                         completion = deepseek_client.chat.completions.create(
-                            model="o3-mini",
+                            model="deepseek-chat",
+                            messages=messages,
+                            temperature=temp)
+                answer = completion.choices[0].message.content
+            elif model_str == "o4-mini-yunwu":
+                model_str = "o4-mini"
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}]
+                if version == "0.28":
+                    raise Exception("Please upgrade your OpenAI version to use DeepSeek client")
+                else:
+                    openai_client = OpenAI(
+                        api_key=os.getenv('OPENAI_API_KEY'),
+                        base_url="https://yunwu.ai/v1"
+                    )
+                    if temp is None:
+                        completion = openai_client.chat.completions.create(
+                            model="o4-mini",
+                            messages=messages)
+                    else:
+                        completion = openai_client.chat.completions.create(
+                            model="o4-mini",
                             messages=messages,
                             temperature=temp)
                 answer = completion.choices[0].message.content
 
             try:
-                if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1", "o3-mini"]:
+                if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1", "o3-mini", "o4-mini"]:
                     encoding = tiktoken.encoding_for_model("gpt-4o")
                 elif model_str in ["deepseek-chat"]:
                     encoding = tiktoken.get_encoding("cl100k_base")

@@ -8,6 +8,9 @@ import traceback
 import matplotlib
 import numpy as np
 import multiprocessing
+# 设置多进程启动方法为'spawn'以解决CUDA初始化问题
+if sys.platform != 'win32':  # Windows已默认使用'spawn'
+    multiprocessing.set_start_method('spawn', force=True)
 from pypdf import PdfReader
 from datasets import load_dataset
 from psutil._common import bytes2human
@@ -15,6 +18,7 @@ from datasets import load_dataset_builder
 from semanticscholar import SemanticScholar
 from sklearn.metrics.pairwise import linear_kernel
 from sklearn.feature_extraction.text import TfidfVectorizer
+import requests
 
 
 
@@ -261,28 +265,87 @@ class ArxivSearch:
 
     def retrieve_full_paper_text(self, query, MAX_LEN=50000):
         pdf_text = str()
-        paper = next(arxiv.Client().results(arxiv.Search(id_list=[query])))
-        # Download the PDF to the PWD with a custom filename.
-        paper.download_pdf(filename="downloaded-paper.pdf")
-        # creating a pdf reader object
-        reader = PdfReader('downloaded-paper.pdf')
-        # Iterate over all the pages
-        for page_number, page in enumerate(reader.pages, start=1):
-            # Extract text from the page
+        max_retries = 5
+        retry_count = 0
+        backoff_factor = 2  # 指数退避因子
+        
+        while retry_count < max_retries:
             try:
-                text = page.extract_text()
-            except Exception as e:
-                os.remove("downloaded-paper.pdf")
-                time.sleep(2.0)
-                return "EXTRACTION FAILED"
+                # 尝试获取论文信息
+                paper = next(arxiv.Client().results(arxiv.Search(id_list=[query])))
+                
+                # 尝试下载 PDF
+                try:
+                    paper.download_pdf(filename="downloaded-paper.pdf")
+                except Exception as e:
+                    # 如果 PDF 下载失败，增加重试次数并等待
+                    retry_count += 1
+                    wait_time = backoff_factor * retry_count
+                    print(f"PDF 下载失败 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                    print(f"等待 {wait_time} 秒后重试...")
+                    time.sleep(wait_time)
+                    continue
+                
+                # 尝试读取 PDF
+                try:
+                    reader = PdfReader('downloaded-paper.pdf')
+                except Exception as e:
+                    # 如果 PDF 读取失败，删除文件，增加重试次数并等待
+                    if os.path.exists("downloaded-paper.pdf"):
+                        os.remove("downloaded-paper.pdf")
+                    retry_count += 1
+                    wait_time = backoff_factor * retry_count
+                    print(f"PDF 读取失败 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                    print(f"等待 {wait_time} 秒后重试...")
+                    time.sleep(wait_time)
+                    continue
+                
+                # 遍历所有页面
+                for page_number, page in enumerate(reader.pages, start=1):
+                    # 提取页面文本
+                    try:
+                        text = page.extract_text()
+                    except Exception as e:
+                        if os.path.exists("downloaded-paper.pdf"):
+                            os.remove("downloaded-paper.pdf")
+                        time.sleep(2.0)
+                        return f"提取文本失败: {str(e)}"
 
-            # Do something with the text (e.g., print it)
-            pdf_text += f"--- Page {page_number} ---"
-            pdf_text += text
-            pdf_text += "\n"
-        os.remove("downloaded-paper.pdf")
-        time.sleep(2.0)
-        return pdf_text[:MAX_LEN]
+                    # 处理文本
+                    pdf_text += f"--- Page {page_number} ---"
+                    pdf_text += text
+                    pdf_text += "\n"
+                
+                # 成功处理，删除文件并返回结果
+                if os.path.exists("downloaded-paper.pdf"):
+                    os.remove("downloaded-paper.pdf")
+                time.sleep(2.0)
+                return pdf_text[:MAX_LEN]
+                
+            except requests.exceptions.SSLError as e:
+                # 特别处理 SSL 错误
+                retry_count += 1
+                wait_time = backoff_factor * retry_count
+                print(f"SSL 错误 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                print(f"等待 {wait_time} 秒后重试...")
+                time.sleep(wait_time)
+                # 确保没有残留的 PDF 文件
+                if os.path.exists("downloaded-paper.pdf"):
+                    os.remove("downloaded-paper.pdf")
+            
+            except Exception as e:
+                # 处理其他所有异常
+                retry_count += 1
+                wait_time = backoff_factor * retry_count
+                print(f"发生错误 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                print(f"等待 {wait_time} 秒后重试...")
+                time.sleep(wait_time)
+                # 确保没有残留的 PDF 文件
+                if os.path.exists("downloaded-paper.pdf"):
+                    os.remove("downloaded-paper.pdf")
+        
+        # 所有重试都失败
+        return f"无法获取论文内容: 已达到最大重试次数 ({max_retries})"
 
 
 # Set the non-interactive backend early in the module
@@ -293,8 +356,19 @@ def worker_run_code(code_str, output_queue):
     output_capture = io.StringIO()
     sys.stdout = output_capture
     try:
-        # Create a globals dictionary with __name__ set to "__main__"
+        # 创建一个globals字典，设置__name__为"__main__"
         globals_dict = {"__name__": "__main__"}
+        # 检查代码中是否包含CUDA相关操作
+        if "torch.cuda" in code_str or ".cuda()" in code_str or ".to('cuda')" in code_str or ".to(\"cuda\")" in code_str:
+            # 添加CUDA设备检查和错误处理
+            cuda_setup = """
+import torch
+if torch.cuda.is_available():
+    torch.cuda.set_device(0)  # 设置默认CUDA设备
+else:
+    print("CUDA不可用，使用CPU进行计算")
+"""
+            code_str = cuda_setup + code_str
         exec(code_str, globals_dict)
     except Exception as e:
         output_capture.write(f"[CODE EXECUTION ERROR]: {str(e)}\n")
@@ -310,12 +384,24 @@ def execute_code(code_str, timeout=600, MAX_LEN=1000):
         return "[CODE EXECUTION ERROR] pubmed Download took way too long. Program terminated"
     if "exit(" in code_str:
         return "[CODE EXECUTION ERROR] The exit() command is not allowed you must remove this."
+    
+    # 检查是否包含PyTorch多进程数据加载器
+    if "DataLoader" in code_str and "num_workers" in code_str:
+        # 添加多进程设置代码
+        mp_setup = """
+# 确保在创建DataLoader之前设置多进程启动方法
+import torch.multiprocessing as mp
+if mp.get_start_method(allow_none=True) != 'spawn':
+    mp.set_start_method('spawn', force=True)
+"""
+        code_str = mp_setup + code_str
+    
     output_queue = multiprocessing.Queue()
     proc = multiprocessing.Process(target=worker_run_code, args=(code_str, output_queue))
     proc.start()
     proc.join(timeout)
     if proc.is_alive():
-        proc.terminate()  # Forcefully kill the process
+        proc.terminate()  # 强制终止进程
         proc.join()
         return (f"[CODE EXECUTION ERROR]: Code execution exceeded the timeout limit of {timeout} seconds. "
                 "You must reduce the time complexity of your code.")

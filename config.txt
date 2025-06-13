@@ -1,3 +1,3 @@
-api-key:sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob
+yvnwu-api-key:sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob
 
 huggingface-key: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

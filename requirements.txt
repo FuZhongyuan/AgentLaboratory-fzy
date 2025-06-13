@@ -117,7 +117,6 @@ threadpoolctl==3.5.0
 tifffile==2024.8.30
 tiktoken==0.8.0
 tokenizers==0.20.4
-torch==2.5.1
 tqdm==4.67.1
 transformers==4.46.3
 typer==0.13.1
@@ -133,3 +132,9 @@ yarl==1.18.0
 zipp==3.21.0
 google-generativeai
 PyPDF2
+
+
+
+torch --index-url https://download.pytorch.org/whl/cu128
+torchvision --index-url https://download.pytorch.org/whl/cu128
+torchaudio --index-url https://download.pytorch.org/whl/cu128
