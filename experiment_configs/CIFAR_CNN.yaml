@@ -1,0 +1,80 @@
+# 关闭用户交互模式
+copilot-mode: True
+
+# 研究主题：CNN结构综述与CIFAR10分类实验分析
+research-topic: "基于CIFAR-10的CNN结构综述与实验对比分析（含ResNet, DenseNet, SE-ResNet及Res2Net）"
+research-dir-path: "CIFAR_CNN_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "中文"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+papersolver-max-steps: 2
+lab-index: 1
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+custom-task-notes:
+  literature-review:
+    - '系统调研CNN在图像分类中的发展历程，尤其在CIFAR-10任务上的应用。'
+    - '重点综述经典CNN、ResNet、DenseNet、SE-ResNet与Res2Net的原理、结构与创新点。'
+    - '查阅并引用最新论文、官方文档与评测结果，结合图示强化结构理解。'
+    - '可引用并下载高质量结构图、性能对比图或自定义图示，用于说明模型差异。'
+
+  plan-formulation:
+    - '撰写综述论文的核心目标是分析五种CNN结构在图像分类中的发展与性能对比。'
+    - '围绕“残差连接机制”“特征复用”“通道注意力”“多尺度表示”四大维度展开对比分析。'
+    - '规划论文逻辑结构：从引言、模型结构对比、性能表现综述，到机制层面深入分析与未来展望。'
+
+  data-preparation:
+    - '不进行实际模型训练，但需要引用已有研究中使用的标准数据集（如CIFAR-10、ImageNet等）及其相关性能指标。'
+    - '通过图表展示CIFAR-10的样本类别与数据分布，以辅助模型设计动机阐述。'
+    - '可使用公开图像可视化工具或文献图进行说明。'
+
+  running-experiments:
+    - '本任务不实际运行模型或训练网络，而是收集并整理已有论文中的实验结果。'
+    - '可以使用示意图、网络结构图、曲线图来展示模型训练行为（loss、accuracy趋势等）。'
+    - '如果必要，可生成或重绘示意图（如跳跃连接示意、多尺度结构）。'
+
+  results-interpretation:
+    - '从已有文献中总结五种CNN模型在训练收敛速度、最终准确率、模型复杂度等方面的表现。'
+    - '重点分析残差连接、密集连接、SE注意力机制、Res2Net的分组多尺度结构对模型性能的具体影响。'
+    - '引入图示辅助结构与行为差异说明，如梯度流示意图、通道注意力图谱等。'
+    - '分析Res2Net的模块结构、粒度层次的特征表示能力、与Dense连接或跳跃连接的不同。'
+
+  report-writing:
+    - '生成一篇符合学术规范的Latex格式综述论文，结构包括：'
+    - '- 引言（背景与研究意义）'
+    - '- 模型综述（结构与机制对比）'
+    - '- 性能对比（引用文献结果图表）'
+    - '- 残差与特征机制分析'
+    - '- Res2Net扩展与创新'
+    - '- 结论与未来趋势'
+    - '所有图表应通过\\includegraphics 引入，图注完整，配图风格统一。'
+
+  report-refinement:
+    - '进行Latex文档的结构优化、语言润色与参考文献整理。'
+    - '确保公式、图表编号规范，引用齐全，排版清晰美观。'
+    - '必要时加入摘要与关键词、图表目录与参考文献条目，符合学术综述论文标准格式。'
+    # - '将论文的大部分内容转换为中文，必要的英文内容保留，如模型名称、缩写、英文术语、英文文献名称、英文作者名称、英文期刊名称、专有名词等。'

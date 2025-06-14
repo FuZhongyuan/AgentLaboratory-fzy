@@ -10,8 +10,7 @@ from mlesolver import MLESolver
 import argparse, pickle, yaml
 
 GLOBAL_AGENTRXIV = None
-DEFAULT_LLM_BACKBONE = "o3-mini"
-RESEARCH_DIR_PATH = "MATH_research_dir"
+DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -677,6 +676,8 @@ def parse_yaml(yaml_file_loc):
     if 'deepseek-api-key' in agentlab_data: parser.deepseek_api_key = agentlab_data["deepseek-api-key"]
     if 'compile-latex' in agentlab_data: parser.compile_latex = agentlab_data["compile-latex"]
     else: parser.compile_latex = True
+    if 'research-dir-path' in agentlab_data: parser.research_dir_path = agentlab_data["research-dir-path"]
+    else: parser.research_dir_path = "MATH_research_dir"
     if 'llm-backend' in agentlab_data: parser.llm_backend = agentlab_data["llm-backend"]
     else: parser.llm_backend = "o3-mini"
     if 'lit-review-backend' in agentlab_data: parser.lit_review_backend = agentlab_data["lit-review-backend"]
@@ -725,6 +726,7 @@ if __name__ == "__main__":
     agentRxiv = args.agentRxiv.lower() == "true" if type(args.agentRxiv) == str else args.agentRxiv
     construct_agentRxiv = args.construct_agentRxiv.lower() == "true" if type(args.construct_agentRxiv) == str else args.construct_agentRxiv
     lab_index = int(args.lab_index) if type(args.construct_agentRxiv) == str else args.lab_index
+    research_dir_path = args.research_dir_path  # 使用配置中的研究目录路径
 
     try: num_papers_to_write = int(args.num_papers_to_write.lower()) if type(args.num_papers_to_write) == str else args.num_papers_to_write
     except Exception: raise Exception("args.num_papers_lit_review must be a valid integer!")
@@ -751,15 +753,26 @@ if __name__ == "__main__":
 
     task_notes_LLM = list()
     task_notes = args.task_notes
-    for _task in task_notes:
-        for _note in task_notes[_task]:
-            task_notes_LLM.append({"phases": [_task.replace("-", " ")], "note": _note})
 
+    # 收集所有实际涉及的任务阶段
+    phases_in_notes = set()
+
+    for _task in task_notes:
+        readable_phase = _task.replace("-", " ")
+        phases_in_notes.add(readable_phase)
+        for _note in task_notes[_task]:
+            task_notes_LLM.append({"phases": [readable_phase], "note": _note})
+
+    # 如果指定语言不是英语，添加通用语言提示
     if args.language != "English":
         task_notes_LLM.append(
-            {"phases": ["literature review", "plan formulation", "data preparation", "running experiments", "results interpretation", "report writing", "report refinement"],
-            "note": f"You should always write in the following language to converse and to write the report {args.language}"},
+            {
+                "phases": list(phases_in_notes),
+                "note": f"You should always write in the following language to converse and to write the report: {args.language}"
+            }
         )
+    print(task_notes_LLM)
+
 
     human_in_loop = {
         "literature review":      human_mode,
@@ -776,22 +789,22 @@ if __name__ == "__main__":
         "plan formulation":       llm_backend,
         "data preparation":       llm_backend,
         "running experiments":    llm_backend,
-        "report writing":         llm_backend,
         "results interpretation": llm_backend,
-        "paper refinement":       llm_backend,
+        "report writing":         llm_backend,
+        "report refinement":      llm_backend,
     }
     if parallel_labs:
         remove_figures()
         GLOBAL_AGENTRXIV = AgentRxiv()
-        remove_directory(f"{RESEARCH_DIR_PATH}")
-        os.mkdir(os.path.join(".", f"{RESEARCH_DIR_PATH}"))
+        remove_directory(f"{research_dir_path}")
+        os.mkdir(os.path.join(".", f"{research_dir_path}"))
         from concurrent.futures import ThreadPoolExecutor, as_completed
         if not compile_pdf: raise Exception("PDF compilation must be used with agentRxiv!")
         def run_lab(parallel_lab_index):
             time_str = str()
             time_now = time.time()
             for _paper_index in range(num_papers_to_write):
-                lab_dir = os.path.join(RESEARCH_DIR_PATH, f"research_dir_lab{parallel_lab_index}_paper{_paper_index}")
+                lab_dir = os.path.join(research_dir_path, f"research_dir_lab{parallel_lab_index}_paper{_paper_index}")
                 os.mkdir(lab_dir)
                 os.mkdir(os.path.join(lab_dir, "src"))
                 os.mkdir(os.path.join(lab_dir, "tex"))
@@ -831,14 +844,14 @@ if __name__ == "__main__":
         remove_figures()
         if agentRxiv: GLOBAL_AGENTRXIV = AgentRxiv(lab_index)
         if not agentRxiv:
-            remove_directory(f"{RESEARCH_DIR_PATH}")
-            os.mkdir(os.path.join(".", f"{RESEARCH_DIR_PATH}"))
+            remove_directory(f"{research_dir_path}")
+            os.mkdir(os.path.join(".", f"{research_dir_path}"))
         # make src and research directory
         if not os.path.exists("state_saves"): os.mkdir(os.path.join(".", "state_saves"))
         time_str = str()
         time_now = time.time()
         for _paper_index in range(num_papers_to_write):
-            lab_direct = f"{RESEARCH_DIR_PATH}/research_dir_{_paper_index}_lab_{lab_index}"
+            lab_direct = f"{research_dir_path}/research_dir_{_paper_index}_lab_{lab_index}"
             os.mkdir(os.path.join(".", lab_direct))
             os.mkdir(os.path.join(f"./{lab_direct}", "src"))
             os.mkdir(os.path.join(f"./{lab_direct}", "tex"))

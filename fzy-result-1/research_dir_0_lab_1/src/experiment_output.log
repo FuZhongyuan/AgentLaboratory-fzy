@@ -1,0 +1,17 @@
+Train batches: 391 Test batches: 79
+Batch shapes → pixel_values: torch.Size([128, 3, 32, 32]) labels: torch.Size([128])
+
+Running ResNet-56 for 1 epoch
+ResNet-56: Test Error 60.2%, Params 855770, FLOPs 0
+
+Running SE-ResNet-110 for 1 epoch
+SE-ResNet-110: Test Error 89.8%, Params 1744952, FLOPs 0
+
+Running Res2Net-29 for 1 epoch
+Res2Net-29: Test Error 55.9%, Params 62626, FLOPs 0
+
+Running SE-Res2Net-29 for 1 epoch
+SE-Res2Net-29: Test Error 57.8%, Params 64999, FLOPs 0
+
+Done. Figures: Figure_1.png, Figure_2.png
+42.2

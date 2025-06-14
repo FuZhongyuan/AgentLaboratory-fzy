@@ -20,6 +20,8 @@ def curr_cost_est():
         "o1": 15.00 / 1000000,
         "o3-mini": 1.10 / 1000000,
         "o4-mini": 1.10 / 1000000,
+        "o4-mini-yunwu": 1.10 / 1000000,
+        "deepseek-chat-yunwu": 1.10 / 1000000,
     }
     costmap_out = {
         "gpt-4o": 10.00/ 1000000,
@@ -31,6 +33,8 @@ def curr_cost_est():
         "o1": 60.00 / 1000000,
         "o3-mini": 4.40 / 1000000,
         "o4-mini": 4.40 / 1000000,
+        "o4-mini-yunwu": 4.40 / 1000000,
+        "deepseek-chat-yunwu": 4.40 / 1000000,
     }
     return sum([costmap_in[_]*TOKENS_IN[_] for _ in TOKENS_IN]) + sum([costmap_out[_]*TOKENS_OUT[_] for _ in TOKENS_OUT])
 
@@ -51,6 +55,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
         os.environ["DEEPSEEK_API_KEY"] = deepseek_api_key
     for _ in range(tries):
         try:
+            answer = None
             if model_str == "gpt-4o-mini" or model_str == "gpt4omini" or model_str == "gpt-4omini" or model_str == "gpt4o-mini":
                 model_str = "gpt-4o-mini"
                 messages = [
@@ -191,7 +196,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                         model="o1-preview", messages=messages)
                 answer = completion.choices[0].message.content
             elif model_str == "deepseek-chat-yunwu":
-                model_str = "deepseek-chat"
+                model_str = "deepseek-chat-yunwu"
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}]
@@ -200,7 +205,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                 else:
                     deepseek_client = OpenAI(
                         api_key=os.getenv('OPENAI_API_KEY'),
-                        base_url="https://api.deepseek.com/v1"
+                        base_url="https://yunwu.ai/v1"
                     )
                     if temp is None:
                         completion = deepseek_client.chat.completions.create(
@@ -213,7 +218,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                             temperature=temp)
                 answer = completion.choices[0].message.content
             elif model_str == "o4-mini-yunwu":
-                model_str = "o4-mini"
+                model_str = "o4-mini-yunwu"
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}]
@@ -222,7 +227,8 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                 else:
                     openai_client = OpenAI(
                         api_key=os.getenv('OPENAI_API_KEY'),
-                        base_url="https://yunwu.ai/v1"
+                        base_url="https://yunwu.ai/v1",
+                        timeout=300.0
                     )
                     if temp is None:
                         completion = openai_client.chat.completions.create(
@@ -236,9 +242,9 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                 answer = completion.choices[0].message.content
 
             try:
-                if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1", "o3-mini", "o4-mini"]:
+                if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1", "o3-mini", "o4-mini", "o4-mini-yunwu"]:
                     encoding = tiktoken.encoding_for_model("gpt-4o")
-                elif model_str in ["deepseek-chat"]:
+                elif model_str in ["deepseek-chat", "deepseek-chat-yunwu"]:
                     encoding = tiktoken.get_encoding("cl100k_base")
                 else:
                     encoding = tiktoken.encoding_for_model(model_str)
@@ -253,6 +259,8 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                 if print_cost: print(f"Cost approximation has an error? {e}")
             return answer
         except Exception as e:
+            print(f"model_str: {model_str}")
+            print(f"answer: {answer}")
             print("Inference Exception:", e)
             time.sleep(timeout)
             continue
