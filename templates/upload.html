@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+
+{% block title %}上传论文 - AI实验室{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3>上传研究论文</h3>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label for="pdf" class="form-label">选择PDF文件</label>
+                        <input type="file" class="form-control" id="pdf" name="pdf" accept=".pdf" required>
+                        <div class="form-text">支持的文件格式：PDF</div>
+                    </div>
+                    
+                    <div class="upload-area mb-4 p-5 border rounded text-center" id="drop-area">
+                        <div class="upload-icon mb-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-cloud-arrow-up" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M7.646 5.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 6.707V10.5a.5.5 0 0 1-1 0V6.707L6.354 7.854a.5.5 0 1 1-.708-.708l2-2z"/>
+                                <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383zm.653.757c-.757.653-1.153 1.44-1.153 2.056v.448l-.445.049C2.064 6.805 1 7.952 1 9.318 1 10.785 2.23 12 3.781 12h8.906C13.98 12 15 10.988 15 9.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 4.825 10.328 3 8 3a4.53 4.53 0 0 0-2.941 1.1z"/>
+                            </svg>
+                        </div>
+                        <p class="mb-1">拖放文件到此处或点击选择文件</p>
+                        <p class="text-muted small">最大文件大小：50MB</p>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary" id="upload-btn">上传论文</button>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">返回首页</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('pdf');
+        
+        // 拖放效果
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            dropArea.classList.add('bg-light');
+        }
+        
+        function unhighlight() {
+            dropArea.classList.remove('bg-light');
+        }
+        
+        // 处理文件拖放
+        dropArea.addEventListener('drop', handleDrop, false);
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0 && files[0].type === 'application/pdf') {
+                fileInput.files = files;
+                // 显示选择的文件名
+                const fileName = document.createElement('p');
+                fileName.textContent = `已选择: ${files[0].name}`;
+                fileName.classList.add('mt-2', 'text-success');
+                
+                // 移除之前的文件名显示
+                const prevFileName = dropArea.querySelector('.text-success');
+                if (prevFileName) {
+                    prevFileName.remove();
+                }
+                
+                dropArea.appendChild(fileName);
+            }
+        }
+        
+        // 点击上传区域时触发文件选择
+        dropArea.addEventListener('click', function() {
+            fileInput.click();
+        });
+        
+        // 显示选择的文件名
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                const fileName = document.createElement('p');
+                fileName.textContent = `已选择: ${this.files[0].name}`;
+                fileName.classList.add('mt-2', 'text-success');
+                
+                // 移除之前的文件名显示
+                const prevFileName = dropArea.querySelector('.text-success');
+                if (prevFileName) {
+                    prevFileName.remove();
+                }
+                
+                dropArea.appendChild(fileName);
+            }
+        });
+    });
+</script>
+{% endblock %} 

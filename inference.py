@@ -260,7 +260,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
             return answer
         except Exception as e:
             print(f"model_str: {model_str}")
-            print(f"answer: {answer}")
+            print(f"os.environ['OPENAI_API_KEY']: {os.environ['OPENAI_API_KEY']}")
             print("Inference Exception:", e)
             time.sleep(timeout)
             continue

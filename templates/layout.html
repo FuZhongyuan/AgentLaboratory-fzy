@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI实验室{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">AI实验室</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == url_for('index') %}active{% endif %}" href="{{ url_for('index') }}">首页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == url_for('upload') %}active{% endif %}" href="{{ url_for('upload') }}">上传论文</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == url_for('search') %}active{% endif %}" href="{{ url_for('search') }}">搜索论文</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="start-research-btn">开始研究</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-info alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- 研究任务模态框 -->
+    <div class="modal fade" id="researchModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">开始新研究</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="research-form">
+                        <div class="mb-3">
+                            <label for="research-topic" class="form-label">研究主题</label>
+                            <input type="text" class="form-control" id="research-topic" required>
+                            <div class="form-text">请输入您想要研究的主题或问题</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">配置设置</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="config-type" id="use-template-custom" value="template-custom" checked>
+                                <label class="form-check-label" for="use-template-custom">
+                                    使用模板作为基础并自定义
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="config-type" id="use-custom" value="custom">
+                                <label class="form-check-label" for="use-custom">
+                                    完全自定义配置
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- 模板选择 -->
+                        <div class="mb-3" id="template-selection">
+                            <label for="config-template" class="form-label">选择配置模板</label>
+                            <select class="form-select" id="config-template">
+                                <option value="MATH_agentlab.yaml">数学问题求解 (Agent Lab)</option>
+                                <option value="MATH_agentrxiv.yaml">数学问题求解 (Agent Rxiv)</option>
+                                <option value="CIFAR_CNN.yaml">CNN图像分类分析</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 自定义配置部分 -->
+                        <div class="mb-3" id="custom-config-section">
+                            <div class="mb-3">
+                                <label for="language-select" class="form-label">语言</label>
+                                <select class="form-select" id="language-select">
+                                    <option value="中文">中文</option>
+                                    <option value="English">英文</option>
+                                </select>
+                            </div>
+                            
+                            <!-- 添加API密钥输入框 -->
+                            <div class="mb-3">
+                                <label for="api-key" class="form-label">API密钥</label>
+                                <input type="password" class="form-control" id="api-key" placeholder="输入您的OpenAI API密钥">
+                                <div class="form-text">您的API密钥将仅用于当前研究任务，不会被保存</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="llm-backend" class="form-label">LLM后端</label>
+                                <select class="form-select" id="llm-backend">
+                                    <option value="o4-mini-yunwu">o4-mini-yunwu</option>
+                                    <option value="o3-mini">o3-mini</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">其他选项</label>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="lit-review-papers" class="form-label">文献综述论文数量</label>
+                                        <input type="number" class="form-control" id="lit-review-papers" value="5" min="0" max="20">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="agentrxiv-papers" class="form-label">AgentRxiv论文数量</label>
+                                        <input type="number" class="form-control" id="agentrxiv-papers" value="5" min="0" max="20">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="papers-to-write" class="form-label">生成论文数量</label>
+                                        <input type="number" class="form-control" id="papers-to-write" value="1" min="1" max="40">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="mlesolver-steps" class="form-label">MLE求解步骤数</label>
+                                        <input type="number" class="form-control" id="mlesolver-steps" value="3" min="1" max="10">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="papersolver-steps" class="form-label">Paper求解步骤数</label>
+                                        <input type="number" class="form-control" id="papersolver-steps" value="1" min="1" max="10">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="copilot-mode" checked>
+                                    <label class="form-check-label" for="copilot-mode">开启Copilot模式</label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="compile-latex">
+                                    <label class="form-check-label" for="compile-latex">编译LaTeX生成PDF</label>
+                                </div>
+                            </div>
+                            
+                            <!-- 高级选项按钮 -->
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="toggle-advanced-options">
+                                    显示任务备注设置 <i class="bi bi-chevron-down"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- 高级选项内容 - 默认隐藏 -->
+                            <div class="d-none" id="advanced-options">
+                                <div class="accordion" id="taskNotesAccordion">
+                                    <!-- 文献综述 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="literatureReviewHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#literatureReviewCollapse">
+                                                文献综述备注
+                                            </button>
+                                        </h2>
+                                        <div id="literatureReviewCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="literature-review-notes" rows="3" placeholder="输入文献综述任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 计划制定 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="planFormulationHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#planFormulationCollapse">
+                                                计划制定备注
+                                            </button>
+                                        </h2>
+                                        <div id="planFormulationCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="plan-formulation-notes" rows="3" placeholder="输入计划制定任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 数据准备 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="dataPreparationHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#dataPreparationCollapse">
+                                                数据准备备注
+                                            </button>
+                                        </h2>
+                                        <div id="dataPreparationCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="data-preparation-notes" rows="3" placeholder="输入数据准备任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 运行实验 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="runningExperimentsHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#runningExperimentsCollapse">
+                                                运行实验备注
+                                            </button>
+                                        </h2>
+                                        <div id="runningExperimentsCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="running-experiments-notes" rows="3" placeholder="输入运行实验任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 结果解释 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="resultsInterpretationHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#resultsInterpretationCollapse">
+                                                结果解释备注
+                                            </button>
+                                        </h2>
+                                        <div id="resultsInterpretationCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="results-interpretation-notes" rows="3" placeholder="输入结果解释任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 报告写作 -->
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="reportWritingHeading">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#reportWritingCollapse">
+                                                报告写作备注
+                                            </button>
+                                        </h2>
+                                        <div id="reportWritingCollapse" class="accordion-collapse collapse" data-bs-parent="#taskNotesAccordion">
+                                            <div class="accordion-body">
+                                                <textarea class="form-control" id="report-writing-notes" rows="3" placeholder="输入报告写作任务的备注"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="submit-research">开始研究</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务列表模态框 -->
+    <div class="modal fade" id="tasksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">我的研究任务</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>主题</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tasks-table-body">
+                                <!-- 任务列表将在这里动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="no-tasks-message" class="text-center d-none">
+                        <p>您还没有研究任务</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#researchModal">新建研究</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 研究结果模态框 -->
+    <div class="modal fade" id="resultModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">研究结果</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="result-content">
+                        <!-- 研究结果将在这里动态加载 -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <a href="#" class="btn btn-primary" id="download-pdf" target="_blank">下载PDF</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-5 py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">© 2023-2025 AI实验室 | 多用户支持与文件管理</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

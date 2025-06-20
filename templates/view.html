@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+
+{% block title %}查看论文 - {{ paper.filename }} - AI实验室{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">首页</a></li>
+                <li class="breadcrumb-item active">{{ paper.filename }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3>{{ paper.filename }}</h3>
+                <div>
+                    <button class="btn btn-success" id="research-this-paper" data-paper-id="{{ paper.id }}">使用此论文研究</button>
+                    <a href="{{ pdf_url }}" class="btn btn-primary" download>下载PDF</a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="pdf-container" style="height: 80vh;">
+                    <iframe src="{{ pdf_url }}" style="width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用论文研究的模态框 -->
+<div class="modal fade" id="viewResearchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用此论文开始研究</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>您将使用 <strong>{{ paper.filename }}</strong> 作为参考资料开始研究。</p>
+                <form id="view-research-form">
+                    <div class="mb-3">
+                        <label for="view-research-topic" class="form-label">研究主题</label>
+                        <input type="text" class="form-control" id="view-research-topic" required>
+                        <div class="form-text">请输入您想基于此论文研究的主题</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submit-view-research">开始研究</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const researchThisPaperBtn = document.getElementById('research-this-paper');
+        const viewResearchModal = new bootstrap.Modal(document.getElementById('viewResearchModal'));
+        // 从HTML数据属性中获取paper.id
+        const paperId = researchThisPaperBtn.getAttribute('data-paper-id');
+        
+        researchThisPaperBtn.addEventListener('click', function() {
+            viewResearchModal.show();
+        });
+        
+        document.getElementById('submit-view-research').addEventListener('click', function() {
+            const researchTopic = document.getElementById('view-research-topic').value;
+            
+            if (!researchTopic) {
+                alert('请输入研究主题');
+                return;
+            }
+            
+            // 发送API请求
+            fetch('/api/start_research', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    topic: researchTopic,
+                    paper_id: parseInt(paperId, 10)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    viewResearchModal.hide();
+                    alert('研究任务已启动！您可以在"我的任务"中查看进度。');
+                } else {
+                    alert('启动研究失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('启动研究时出错，请稍后重试。');
+            });
+        });
+    });
+</script>
+{% endblock %} 

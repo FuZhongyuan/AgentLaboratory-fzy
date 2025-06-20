@@ -640,6 +640,7 @@ class PhDStudentAgent(BaseAgent):
                 "To collect paper summaries, use the following command: ```SUMMARY\nSEARCH QUERY\n```\n where SEARCH QUERY is a string that will be used to find papers with semantically similar content and SUMMARY is just the word SUMMARY. Make sure your search queries are very short.\n"
                 "To get the full paper text for an arXiv paper, use the following command: ```FULL_TEXT\narXiv paper ID\n```\n where arXiv paper ID is the ID of the arXiv paper (which can be found by using the SUMMARY command), and FULL_TEXT is just the word FULL_TEXT. Make sure to read the full text using the FULL_TEXT command before adding it to your list of relevant papers.\n"
                 "If you believe a paper is relevant to the research project proposal, you can add it to the official review after reading using the following command: ```ADD_PAPER\narXiv_paper_ID\nPAPER_SUMMARY\n```\nwhere arXiv_paper_ID is the ID of the arXiv paper, PAPER_SUMMARY is a brief summary of the paper, and ADD_PAPER is just the word ADD_PAPER. You can only add one paper at a time. \n"
+                "IMPORTANT: Always check the list of already added papers at the beginning of each feedback to avoid downloading or adding duplicate papers. If you are told a paper is already in the review, choose a different paper instead.\n"
                 "Make sure to use ADD_PAPER when you see a relevant paper. DO NOT use SUMMARY too many times."
                 "You can only use a single command per inference turn. Do not use more than one command per inference. If you use multiple commands, then only one of them will be executed, not both.\n"
                 "Make sure to extensively discuss the experimental results in your summary.\n"
@@ -678,6 +679,8 @@ class PhDStudentAgent(BaseAgent):
             phase_str = (
                 "Your goal is to perform a literature review for the presented task and add papers to the literature review.\n"
                 "You have access to arXiv and can perform two search operations: (1) finding many different paper summaries from a search query and (2) getting a single full paper text for an arXiv paper.\n"
+                "IMPORTANT: Do not add duplicate papers to the literature review. Before requesting FULL_TEXT or using ADD_PAPER, check if the paper has already been added by looking at the list of papers provided in the feedback.\n"
+                "If you are told that a paper has already been added or downloaded, move on to a different paper instead of trying to add it again.\n"
             )
             rev_papers = "Papers in your review so far: " + " ".join([_paper["arxiv_id"] for _paper in self.lit_review])
             phase_str += rev_papers if len(self.lit_review) > 0 else ""
@@ -720,6 +723,12 @@ class PhDStudentAgent(BaseAgent):
             else:
                 arxiv_id, review_text = review.strip().split("\n", 1)
                 full_text = arx_eng.retrieve_full_paper_text(arxiv_id)
+            
+            # 检查论文ID是否已经存在于文献综述中
+            for existing_paper in self.lit_review:
+                if existing_paper["arxiv_id"] == arxiv_id:
+                    return f"论文 {arxiv_id} 已经添加到文献综述中，请勿重复添加", existing_paper["full_text"]
+            
             review_entry = {
                 "arxiv_id": arxiv_id,
                 "full_text": full_text,

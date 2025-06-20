@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+
+{% block title %}搜索论文 - AI实验室{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3>搜索论文</h3>
+            </div>
+            <div class="card-body">
+                <form method="get" action="{{ url_for('search') }}">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control form-control-lg" name="q" placeholder="输入关键词、问题或研究主题..." value="{{ query }}">
+                        <button class="btn btn-primary" type="submit">搜索</button>
+                    </div>
+                    <div class="form-text">使用语义搜索在您的论文库中查找相关内容</div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if query %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>搜索结果: "{{ query }}"</h4>
+            </div>
+            <div class="card-body">
+                {% if papers %}
+                <div class="list-group">
+                    {% for paper, score in papers %}
+                    <div class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">{{ paper.filename }}</h5>
+                            <small class="text-muted">相关度: {{ "%.2f"|format(score*100) }}%</small>
+                        </div>
+                        <div class="mt-3">
+                            <a href="{{ url_for('view_pdf', paper_id=paper.id) }}" class="btn btn-sm btn-primary" target="_blank">查看论文</a>
+                            <button class="btn btn-sm btn-success research-with-paper" data-paper-id="{{ paper.id }}" data-paper-name="{{ paper.filename }}">使用此论文研究</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    没有找到与 "{{ query }}" 相关的论文。请尝试其他关键词或 <a href="{{ url_for('upload') }}">上传新论文</a>。
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 使用论文研究的模态框 -->
+<div class="modal fade" id="researchWithPaperModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用论文开始研究</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>您将使用 <strong id="selected-paper-name"></strong> 作为参考资料开始研究。</p>
+                <form id="research-with-paper-form">
+                    <input type="hidden" id="paper-id-input">
+                    <div class="mb-3">
+                        <label for="paper-research-topic" class="form-label">研究主题</label>
+                        <input type="text" class="form-control" id="paper-research-topic" required>
+                        <div class="form-text">请输入您想基于此论文研究的主题</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submit-paper-research">开始研究</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 使用论文研究
+        const researchWithPaperButtons = document.querySelectorAll('.research-with-paper');
+        const researchWithPaperModal = new bootstrap.Modal(document.getElementById('researchWithPaperModal'));
+        const selectedPaperNameElement = document.getElementById('selected-paper-name');
+        const paperIdInput = document.getElementById('paper-id-input');
+        
+        researchWithPaperButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const paperId = this.getAttribute('data-paper-id');
+                const paperName = this.getAttribute('data-paper-name');
+                
+                selectedPaperNameElement.textContent = paperName;
+                paperIdInput.value = paperId;
+                
+                researchWithPaperModal.show();
+            });
+        });
+        
+        // 提交基于论文的研究
+        document.getElementById('submit-paper-research').addEventListener('click', function() {
+            const paperId = paperIdInput.value;
+            const researchTopic = document.getElementById('paper-research-topic').value;
+            
+            if (!researchTopic) {
+                alert('请输入研究主题');
+                return;
+            }
+            
+            // 发送API请求
+            fetch('/api/start_research', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    topic: researchTopic,
+                    paper_id: paperId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    researchWithPaperModal.hide();
+                    alert('研究任务已启动！您可以在"我的任务"中查看进度。');
+                } else {
+                    alert('启动研究失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('启动研究时出错，请稍后重试。');
+            });
+        });
+    });
+</script>
+{% endblock %} 

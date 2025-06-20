@@ -14,7 +14,7 @@
 </p>
 
 ### News 
-* [March/24/2025] 🎉 🎊 🎉 Now introducing **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other’s research. This allows agents to make cumulative progress on their research.
+* [March/24/2025] 🎉 🎊 🎉 Now introducing **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other's research. This allows agents to make cumulative progress on their research.
 
 ## 📖 Overview
 
@@ -24,7 +24,7 @@
   <img src="media/AgentLab.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
 </p>
 
-- Agent Laboratory also supports **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other’s research. This allows agents to make cumulative progress on their research.
+- Agent Laboratory also supports **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other's research. This allows agents to make cumulative progress on their research.
 
 <p align="center">
   <img src="media/agentrxiv.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
@@ -122,7 +122,7 @@ task-notes:
 
 When conducting research, **the choice of model can significantly impact the quality of results**. More powerful models tend to have higher accuracy, better reasoning capabilities, and better report generation. If computational resources allow, prioritize the use of advanced models such as o1-(mini/preview) or similar state-of-the-art large language models.
 
-However, **it’s important to balance performance and cost-effectiveness**. While powerful models may yield better results, they are often more expensive and time-consuming to run. Consider using them selectively—for instance, for key experiments or final analyses—while relying on smaller, more efficient models for iterative tasks or initial prototyping.
+However, **it's important to balance performance and cost-effectiveness**. While powerful models may yield better results, they are often more expensive and time-consuming to run. Consider using them selectively—for instance, for key experiments or final analyses—while relying on smaller, more efficient models for iterative tasks or initial prototyping.
 
 When resources are limited, **optimize by fine-tuning smaller models** on your specific dataset or combining pre-trained models with task-specific prompts to achieve the desired balance between performance and computational efficiency.
 
@@ -187,3 +187,169 @@ If you would like to get in touch, feel free to reach out to [sschmi46@jhu.edu](
       url={https://arxiv.org/abs/2503.18102}, 
 }
 ```
+
+## 🔄 多用户支持与文件管理
+
+Agent Laboratory现已支持多用户并行使用和隔离的文件管理系统，特别适合需要构建网站界面供多人使用的场景。
+
+### 主要改进：
+
+1. **用户会话管理**：
+   - 为每个用户创建唯一的会话ID
+   - 所有用户数据关联到其唯一标识符
+   - 自动创建用户专属数据目录
+
+2. **安全的文件隔离**：
+   - 每个用户的数据、代码和生成的图片严格隔离
+   - 防止用户间数据泄露或干扰
+   - 自动权限检查确保用户只能访问自己的数据
+
+3. **改进的文件管理**：
+   - 所有生成的图像和文件保存在用户自己的目录中
+   - 解决了之前图片直接保存在根目录的问题
+   - 为matplotlib绘图添加自动重定向功能
+
+4. **研究任务API**：
+   - 新增API端点用于启动研究任务
+   - 支持跟踪研究进度和获取结果
+   - 异步执行长时间运行的实验
+
+5. **定期清理机制**：
+   - 自动清理过期的用户数据和任务
+   - 优化存储空间使用
+   - 可配置的数据保留策略
+
+### 技术实现：
+
+- 使用Flask会话管理用户状态
+- 修改文件生成逻辑，包括matplotlib绘图函数
+- 添加用户权限验证层
+- 实现异步任务处理机制
+- 建立数据库模型追踪用户和任务
+
+### 使用方法：
+
+用户现在可以通过网站界面提交研究请求，系统会自动为其创建独立的工作环境，并保存所有研究成果在用户专属目录中。用户可以随时查看研究进度、下载报告和图表，而无需担心与其他用户的数据混淆。
+
+# AgentLaboratory Web服务器集成
+
+本项目实现了AgentLaboratory研究自动化框架与Web服务器的集成，使用户可以通过Web界面轻松启动和管理自动化研究任务。
+
+## 主要功能
+
+- 通过Web界面管理研究任务
+- 支持多种语言的研究报告生成
+- 用户数据管理和会话控制
+- 论文上传和搜索功能
+- 研究结果可视化和共享
+- 与AgentRxiv集成，支持自主研究代理之间的协作
+
+## 技术改进
+
+### 配置整合
+
+我们对`app.py`进行了修改，整合了`ai_lab_repo.py`中的配置逻辑，主要包括：
+
+1. 添加命令行参数支持，允许用户指定端口和配置文件：
+   ```python
+   parser = argparse.ArgumentParser(description="AgentLaboratory Web Server")
+   parser.add_argument('--port', type=int, default=5000, help='Web服务器监听端口')
+   parser.add_argument('--yaml-location', type=str, default="experiment_configs/MATH_agentlab.yaml", help='YAML配置文件路径，用于加载默认配置')
+   ```
+
+2. 从YAML配置文件加载默认设置，并存储在app.config中：
+   ```python
+   app.config['DEFAULT_LLM_BACKBONE'] = config.get('llm-backend', "o4-mini-yunwu")
+   app.config['DEFAULT_LANGUAGE'] = config.get('language', '中文')
+   app.config['DEFAULT_NUM_PAPERS_LIT_REVIEW'] = config.get('num-papers-lit-review', 5)
+   # 更多配置...
+   ```
+
+3. 支持API密钥的环境变量设置：
+   ```python
+   api_key = config.get('api-key')
+   if api_key and not os.environ.get('OPENAI_API_KEY'):
+       os.environ['OPENAI_API_KEY'] = api_key
+   ```
+
+### AgentRxiv支持
+
+为了支持AgentRxiv功能，我们进行了以下改进：
+
+1. 修改了`AgentRxiv`类，使其能够接受端口参数：
+   ```python
+   def __init__(self, lab_index=0, port=None):
+       self.port = port if port is not None else 5000 + self.lab_index
+   ```
+
+2. 在`run_app`函数中初始化全局AgentRxiv实例：
+   ```python
+   if AI_LAB_AVAILABLE:
+       from ai_lab_repo import AgentRxiv
+       import ai_lab_repo
+       ai_lab_repo.GLOBAL_AGENTRXIV = AgentRxiv(lab_index=app.config.get('DEFAULT_LAB_INDEX', 0), port=port)
+   ```
+
+3. 在`run_research_task`函数中确保AgentRxiv正确初始化：
+   ```python
+   if agentRxiv and not ai_lab_repo.GLOBAL_AGENTRXIV:
+       lab_index = workflow_params.get('lab_index', 0)
+       ai_lab_repo.GLOBAL_AGENTRXIV = AgentRxiv(lab_index=lab_index)
+   ```
+
+### 研究任务处理改进
+
+我们对`run_research_task`函数进行了全面改进：
+
+1. 使用app.config中的默认值作为配置回退：
+   ```python
+   if 'num-papers-lit-review' in config:
+       workflow_params['num_papers_lit_review'] = config['num-papers-lit-review']
+   elif 'DEFAULT_NUM_PAPERS_LIT_REVIEW' in app.config:
+       workflow_params['num_papers_lit_review'] = app.config['DEFAULT_NUM_PAPERS_LIT_REVIEW']
+   ```
+
+2. 改进了任务笔记的处理逻辑，支持多语言：
+   ```python
+   # 处理任务笔记，转换为LaboratoryWorkflow可接受的格式
+   task_notes_LLM = []
+   task_notes = config['task-notes']
+   
+   # 收集所有实际涉及的任务阶段
+   phases_in_notes = set()
+   
+   for _task in task_notes:
+       readable_phase = _task.replace("-", " ")
+       phases_in_notes.add(readable_phase)
+       for _note in task_notes[_task]:
+           task_notes_LLM.append({"phases": [readable_phase], "note": _note})
+   ```
+
+3. 添加了agent模型配置：
+   ```python
+   llm_backend = config.get('llm-backend', app.config.get('DEFAULT_LLM_BACKBONE', 'o4-mini-yunwu'))
+   agent_models = {
+       "literature review": llm_backend,
+       "plan formulation": llm_backend,
+       # 更多阶段...
+   }
+   workflow_params['agent_model_backbone'] = agent_models
+   ```
+
+## 使用方法
+
+启动服务器：
+```bash
+python app.py --port 5000 --yaml-location "experiment_configs/MATH_agentlab.yaml"
+```
+
+访问Web界面：
+```
+http://localhost:5000
+```
+
+## 注意事项
+
+- 确保已安装所有必要的依赖项
+- 在启用AgentRxiv功能时，确保服务器在正确的端口上运行
+- 对于非英语研究，请在配置文件中设置适当的语言参数

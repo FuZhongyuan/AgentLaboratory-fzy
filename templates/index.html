@@ -1,0 +1,104 @@
+{% extends "layout.html" %}
+
+{% block title %}首页 - AI实验室{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3>欢迎使用AI实验室</h3>
+            </div>
+            <div class="card-body">
+                <p class="lead">AI实验室是一个强大的研究助手，可以帮助您进行文献综述、数据分析和论文写作。</p>
+                <p>您可以：</p>
+                <ul>
+                    <li>上传研究论文进行分析</li>
+                    <li>搜索已上传的论文</li>
+                    <li>开始新的研究项目</li>
+                    <li>查看和管理您的研究任务</li>
+                </ul>
+                <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
+                    <a href="{{ url_for('upload') }}" class="btn btn-primary me-md-2">上传论文</a>
+                    <button class="btn btn-success" id="view-tasks-btn">查看我的任务</button>
+                    <button class="btn btn-info" id="index-start-research">开始新研究</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h4>快速搜索</h4>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('search') }}" method="get">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="输入关键词..." name="q">
+                        <button class="btn btn-outline-secondary" type="submit">搜索</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>您的论文库</h4>
+            </div>
+            <div class="card-body">
+                {% if papers %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>文件名</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for paper in papers %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ paper.filename }}</td>
+                                <td>
+                                    <a href="{{ url_for('view_pdf', paper_id=paper.id) }}" class="btn btn-sm btn-primary" target="_blank">查看</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    您还没有上传任何论文。<a href="{{ url_for('upload') }}">现在上传</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 首页上的"查看我的任务"按钮
+        document.getElementById('view-tasks-btn').addEventListener('click', function() {
+            const tasksModal = new bootstrap.Modal(document.getElementById('tasksModal'));
+            loadTasks();
+            tasksModal.show();
+        });
+        
+        // 首页上的"开始新研究"按钮
+        document.getElementById('index-start-research').addEventListener('click', function() {
+            const researchModal = new bootstrap.Modal(document.getElementById('researchModal'));
+            researchModal.show();
+        });
+    });
+</script>
+{% endblock %} 

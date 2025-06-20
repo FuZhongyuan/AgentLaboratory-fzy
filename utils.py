@@ -165,11 +165,96 @@ def count_tokens(messages, model="gpt-4"):
     num_tokens = sum([len(enc.encode(message["content"])) for message in messages])
     return num_tokens
 
-def remove_figures():
-    """Remove a directory if it exists."""
-    for _file in os.listdir("."):
-        if "Figure_" in _file and ".png" in _file:
-            os.remove(_file)
+def remove_figures(user_dir=None):
+    """
+    删除图像文件
+    @param user_dir: 用户目录，如果提供则只删除该目录下的图像
+    """
+    if user_dir:
+        # 只删除指定用户目录下的图像
+        for root, dirs, files in os.walk(user_dir):
+            for _file in files:
+                if "Figure_" in _file and ".png" in _file:
+                    os.remove(os.path.join(root, _file))
+    else:
+        # 兼容旧代码，删除当前目录下的图像
+        for _file in os.listdir("."):
+            if "Figure_" in _file and ".png" in _file:
+                os.remove(_file)
+
+def get_user_dir(user_id=None, lab_dir=None):
+    """
+    获取用户工作目录
+    @param user_id: 用户ID
+    @param lab_dir: 实验目录
+    @return: 工作目录路径
+    """
+    if lab_dir:
+        return lab_dir
+        
+    if user_id:
+        user_dir = f"user_data/{user_id}"
+        os.makedirs(user_dir, exist_ok=True)
+        return user_dir
+        
+    if "CURRENT_OUTPUT_DIR" in os.environ:
+        return os.environ["CURRENT_OUTPUT_DIR"]
+        
+    return "."
+
+def save_to_file(location, filename, data):
+    """
+    保存数据到文件
+    @param location: 目录路径
+    @param filename: 文件名
+    @param data: 要保存的数据
+    """
+    os.makedirs(location, exist_ok=True)
+    
+    filepath = os.path.join(location, filename)
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(data)
+        print(f"Data successfully saved to {filepath}")
+    except Exception as e:
+        print(f"Error saving file {filename}: {e}")
+
+def cleanup_user_data(user_id, older_than_days=30):
+    """
+    清理用户旧数据
+    @param user_id: 用户ID
+    @param older_than_days: 超过多少天的数据被认为是旧数据
+    @return: 清理的文件数量
+    """
+    user_dir = f"user_data/{user_id}"
+    if not os.path.exists(user_dir):
+        return 0
+        
+    now = time.time()
+    cutoff = now - (older_than_days * 86400)
+    
+    count = 0
+    for root, dirs, files in os.walk(user_dir, topdown=False):
+        for file in files:
+            file_path = os.path.join(root, file)
+            file_time = os.path.getmtime(file_path)
+            if file_time < cutoff:
+                try:
+                    os.remove(file_path)
+                    count += 1
+                except Exception as e:
+                    print(f"Error removing file {file_path}: {e}")
+                    
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
+            if not os.listdir(dir_path):
+                try:
+                    os.rmdir(dir_path)
+                    count += 1
+                except Exception as e:
+                    print(f"Error removing directory {dir_path}: {e}")
+    
+    return count
 
 def remove_directory(dir_path):
     """Remove a directory if it exists."""
@@ -181,17 +266,6 @@ def remove_directory(dir_path):
             print(f"Error removing directory {dir_path}: {e}")
     else:
         print(f"Directory {dir_path} does not exist or is not a directory.")
-
-
-def save_to_file(location, filename, data):
-    """Utility function to save data as plain text."""
-    filepath = os.path.join(location, filename)
-    try:
-        with open(filepath, 'w') as f:
-            f.write(data)  # Write the raw string instead of using json.dump
-        print(f"Data successfully saved to {filepath}")
-    except Exception as e:
-        print(f"Error saving file {filename}: {e}")
 
 
 def clip_tokens(messages, model="gpt-4", max_tokens=100000):

@@ -200,7 +200,7 @@ Please make sure the abstract reads smoothly and is well-motivated. This should 
 """,
     "related work": """
 - Academic siblings of our work, i.e. alternative attempts in literature at trying to solve the same problem. 
-- Goal is to “Compare and contrast” - how does their approach differ in either assumptions or method? If their method is applicable to our Problem Setting I expect a comparison in the experimental section. If not, there needs to be a clear statement why a given method is not applicable. 
+- Goal is to "Compare and contrast" - how does their approach differ in either assumptions or method? If their method is applicable to our Problem Setting I expect a comparison in the experimental section. If not, there needs to be a clear statement why a given method is not applicable. 
 - Note: Just describing what another paper is doing is not enough. We need to compare and contrast.
 """,
     "background": """
@@ -410,10 +410,28 @@ class PaperSolver:
         score = None
         prev_paper_ret = self.prev_paper_ret
         paper_lines = copy(self.paper_lines)
+        
+        # 获取用户输出目录，优先使用保存位置，否则检查环境变量
+        output_dir = self.save_loc
+        if not output_dir and "CURRENT_OUTPUT_DIR" in os.environ:
+            output_dir = os.environ.get("CURRENT_OUTPUT_DIR")
+        
+        # 替换图像引用路径
         if "\\includegraphics[width=\\textwidth]{Figure_1.png}" in model_resp or "\\includegraphics[width=\\textwidth]{Figure_2.png}" in model_resp:
-            cwd = os.getcwd()
-            model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_1.png}", "\\includegraphics[width=\\textwidth]{" + cwd + "/Figure_1.png}")
-            model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_2.png}", "\\includegraphics[width=\\textwidth]{" + cwd + "/Figure_2.png}")
+            if output_dir:
+                # 使用用户特定目录
+                model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_1.png}", 
+                                              f"\\includegraphics[width=\\textwidth]{{{output_dir}/Figure_1.png}}")
+                model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_2.png}", 
+                                              f"\\includegraphics[width=\\textwidth]{{{output_dir}/Figure_2.png}}")
+            else:
+                # 回退到旧方法 - 使用当前工作目录
+                cwd = os.getcwd()
+                model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_1.png}", 
+                                              f"\\includegraphics[width=\\textwidth]{{{cwd}/Figure_1.png}}")
+                model_resp = model_resp.replace("\\includegraphics[width=\\textwidth]{Figure_2.png}", 
+                                              f"\\includegraphics[width=\\textwidth]{{{cwd}/Figure_2.png}}")
+
         for cmd in self.commands:
             if cmd.matches_command(model_resp):
                 # attempt to execute the paper edit command

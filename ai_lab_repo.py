@@ -1,6 +1,5 @@
 import PyPDF2
 import threading
-from app import *
 from agents import *
 from copy import copy
 from pathlib import Path
@@ -16,7 +15,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -24,6 +23,7 @@ class LaboratoryWorkflow:
         @param num_papers_lit_review: (int) number of papers to include in the lit review
         @param agent_model_backbone: (str or dict) model backbone to use for agents
         @param notes: (list) notes for agent to follow during tasks
+        @param state_callback: (function) callback function to notify when state is saved
         """
         self.agentRxiv = agentRxiv
         self.max_prev_papers = 10
@@ -39,6 +39,7 @@ class LaboratoryWorkflow:
         self.research_topic = research_topic
         self.model_backbone = agent_model_backbone
         self.num_papers_lit_review = num_papers_lit_review
+        self.state_callback = state_callback
 
         self.print_cost = True
         self.review_override = True # should review be overridden?
@@ -108,8 +109,37 @@ class LaboratoryWorkflow:
         @param phase: (str) phase string
         @return: None
         """
-        with open(f"state_saves/Paper{self.paper_index}.pkl", "wb") as f:
-            pickle.dump(self, f)
+        state_file = None
+        
+        # 使用用户特定的目录（lab_dir）来保存状态
+        if self.lab_dir:
+            # 在用户研究目录中创建state_saves子目录
+            state_dir = os.path.join(self.lab_dir, "state_saves")
+            os.makedirs(state_dir, exist_ok=True)
+            
+            # 保存到用户特定的目录
+            state_file = os.path.join(state_dir, f"Paper{self.paper_index}_{phase}.pkl")
+            with open(state_file, "wb") as f:
+                pickle.dump(self, f)
+            if self.verbose:
+                print(f"状态已保存到 {state_file}")
+        else:
+            # 如果没有指定lab_dir，则使用默认目录
+            try:
+                os.makedirs("state_saves", exist_ok=True)
+                state_file = f"state_saves/Paper{self.paper_index}_{phase}.pkl"
+                with open(state_file, "wb") as f:
+                    pickle.dump(self, f)
+                if self.verbose:
+                    print(f"状态已保存到 {state_file}")
+            except Exception as e:
+                print(f"保存状态时出错: {e}")
+                # 状态保存失败不应该影响整个研究流程
+                pass
+        
+        # 如果有回调函数，调用它并传递当前阶段和状态文件路径
+        if self.state_callback and state_file:
+            self.state_callback(phase, state_file)
 
     def set_agent_attr(self, attr, obj):
         """
@@ -180,7 +210,11 @@ class LaboratoryWorkflow:
                     return_to_exp_phase = self.report_refinement()
 
                     if not return_to_exp_phase:
-                        if self.save: self.save_state(subtask)
+                        if self.save: 
+                            try:
+                                self.save_state(subtask)
+                            except Exception as e:
+                                print(f"保存状态时出错: {e}")
                         return
 
                     self.set_agent_attr("second_round", return_to_exp_phase)
@@ -196,7 +230,11 @@ class LaboratoryWorkflow:
                     self.phase_status["report writing"] = False
                     self.phase_status["report refinement"] = False
                     self.perform_research()
-                if self.save: self.save_state(subtask)
+                if self.save: 
+                    try:
+                        self.save_state(subtask)
+                    except Exception as e:
+                        print(f"保存状态时出错: {e}")
                 # Calculate and print the duration of the phase
                 phase_end_time = time.time()
                 phase_duration = phase_end_time - phase_start_time
@@ -323,8 +361,8 @@ class LaboratoryWorkflow:
             solver.solve()
         # get best code results
         code = "\n".join(solver.best_codes[0][0])
-        # regenerate figures from top code
-        #execute_code(code)
+        # 执行代码并传递lab_dir，以便使用正确的用户目录保存文件
+        execute_results = execute_code(code, lab_dir=self.lab_dir)
         score = solver.best_codes[0][1]
         exp_results = solver.best_codes[0][2]
         if self.verbose: print(f"Running experiments completed, reward function score: {score}")
@@ -333,10 +371,11 @@ class LaboratoryWorkflow:
             if retry: return retry
         save_to_file(f"./{self.lab_dir}/src", "run_experiments.py", code)
         save_to_file(f"./{self.lab_dir}/src", "experiment_output.log", exp_results)
+        # set results, reset agent state
         self.set_agent_attr("results_code", code)
         self.set_agent_attr("exp_results", exp_results)
-        # reset agent state
         self.reset_agents()
+        self.statistics_per_phase["running experiments"]["steps"] = self.mlesolver_max_steps
         return False
 
     def data_preparation(self):
@@ -345,27 +384,34 @@ class LaboratoryWorkflow:
         @return: (bool) whether to repeat the phase
         """
         max_tries = self.max_steps
+        swe_dialogue = str()
         ml_feedback = str()
-        ml_dialogue = str()
-        swe_feedback = str()
-        ml_command = str()
-        hf_engine = HFDataSearch()
+        swe_feedback = str()  # 初始化 swe_feedback 变量
         # iterate until max num tries to complete task is exhausted
         for _i in range(max_tries):
-            print(f"@@ Lab #{self.lab_index} Paper #{self.paper_index} @@")
-            if ml_feedback != "":
-                ml_feedback_in = "Feedback provided to the ML agent: " + ml_feedback
-            else: ml_feedback_in = ""
-            resp = self.sw_engineer.inference(self.research_topic, "data preparation", feedback=f"{ml_dialogue}\nFeedback from previous command: {swe_feedback}\n{ml_command}{ml_feedback_in}", step=_i)
-            swe_feedback = str()
+            resp = self.sw_engineer.inference(
+                self.research_topic, "data preparation",
+                feedback=f"{ml_feedback}", step=_i)
+            if self.verbose: print(f"Software Engineer: ", resp, "\n~~~~~~~~~~~")
+
             swe_dialogue = str()
             if "```DIALOGUE" in resp:
                 dialogue = extract_prompt(resp, "DIALOGUE")
-                swe_dialogue = f"\nThe following is dialogue produced by the SW Engineer: {dialogue}\n"
-                if self.verbose: print("#"*40, f"\nThe following is dialogue produced by the SW Engineer: {dialogue}", "\n", "#"*40)
+                swe_dialogue = f"The following is dialogue produced by the software engineer: {dialogue}"
+                if self.verbose: print("#"*40, "\n", swe_dialogue, "#"*40, "\n")
+
+            # identify if EXECUTE_CODE is in resp
+            if "```EXECUTE_CODE" in resp:
+                # extract code
+                code = extract_prompt(resp, "EXECUTE_CODE")
+                # execute code
+                code_resp = execute_code(code, lab_dir=self.lab_dir)
+                if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
+                ml_feedback = f"\nCode Response: {code_resp}\n"
+
             if "```SUBMIT_CODE" in resp:
                 final_code = extract_prompt(resp, "SUBMIT_CODE")
-                code_resp = execute_code(final_code, timeout=60)
+                code_resp = execute_code(final_code, timeout=60, lab_dir=self.lab_dir)
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
                 swe_feedback += f"\nCode Response: {code_resp}\n"
                 if "[CODE EXECUTION ERROR]" in code_resp:
@@ -380,35 +426,15 @@ class LaboratoryWorkflow:
                     self.reset_agents()
                     self.statistics_per_phase["data preparation"]["steps"] = _i
                     return False
-
-            if ml_feedback != "":
-                ml_feedback_in = "Feedback from previous command: " + ml_feedback
-            else:
-                ml_feedback_in = ""
-            resp = self.ml_engineer.inference(
-                self.research_topic, "data preparation",
-                feedback=f"{swe_dialogue}\n{ml_feedback_in}", step=_i)
-            #if self.verbose: print("ML Engineer: ", resp, "\n~~~~~~~~~~~")
-            ml_feedback = str()
-            ml_dialogue = str()
-            ml_command = str()
-            if "```DIALOGUE" in resp:
-                dialogue = extract_prompt(resp, "DIALOGUE")
-                ml_dialogue = f"\nThe following is dialogue produced by the ML Engineer: {dialogue}\n"
-                if self.verbose: print("#" * 40, f"\nThe following is dialogue produced by the ML Engineer: {dialogue}", "#" * 40, "\n")
-            if "```python" in resp:
-                code = extract_prompt(resp, "python")
-                code = self.ml_engineer.dataset_code + "\n" + code
-                code_resp = execute_code(code, timeout=120)
-                ml_command = f"Code produced by the ML agent:\n{code}"
-                ml_feedback += f"\nCode Response: {code_resp}\n"
-                if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
-            if "```SEARCH_HF" in resp:
-                hf_query = extract_prompt(resp, "SEARCH_HF")
-                hf_res = "\n".join(hf_engine.results_str(hf_engine.retrieve_ds(hf_query)))
-                ml_command = f"HF search command produced by the ML agent:\n{hf_query}"
-                ml_feedback += f"Huggingface results: {hf_res}\n"
-        raise Exception("Max tries during phase: Data Preparation")
+        
+        # 如果达到最大尝试次数仍未成功，返回False以继续下一阶段
+        if self.except_if_fail:
+            raise Exception("Max tries during phase: Data Preparation")
+        else:
+            print("警告：数据准备阶段达到最大尝试次数，将继续下一阶段")
+            self.set_agent_attr("dataset_code", "# 未能成功生成数据准备代码")
+            self.reset_agents()
+            return False
 
     def plan_formulation(self):
         """
@@ -475,6 +501,12 @@ class LaboratoryWorkflow:
         for _i in range(max_tries):
             print(f"@@ Lab #{self.lab_index} Paper #{self.paper_index} @@")
             feedback = str()
+            
+            # 在每次迭代开始时，提供已添加论文的列表信息
+            if len(self.phd.lit_review) > 0:
+                added_papers = "已添加的论文列表:\n" + "\n".join([f"- {paper['arxiv_id']}: {paper['summary'][:100]}..." for paper in self.phd.lit_review])
+                feedback = added_papers + "\n\n"
+            
             # grab summary of papers from arxiv
             if "```SUMMARY" in resp:
                 query = extract_prompt(resp, "SUMMARY")
@@ -482,16 +514,22 @@ class LaboratoryWorkflow:
                 if self.agentRxiv:
                     if GLOBAL_AGENTRXIV.num_papers() > 0:
                         papers += GLOBAL_AGENTRXIV.search_agentrxiv(query, self.num_agentrxiv_papers,)
-                feedback = f"You requested arXiv papers related to the query {query}, here was the response\n{papers}"
+                feedback += f"You requested arXiv papers related to the query {query}, here was the response\n{papers}"
 
             # grab full text from arxiv ID
             elif "```FULL_TEXT" in resp:
                 query = extract_prompt(resp, "FULL_TEXT")
-                if self.agentRxiv and "AgentRxiv" in query: full_text = GLOBAL_AGENTRXIV.retrieve_full_text(query,)
-                else: full_text = arx_eng.retrieve_full_paper_text(query)
-                # expiration timer so that paper does not remain in context too long
-                arxiv_paper = f"```EXPIRATION {self.arxiv_paper_exp_time}\n" + full_text + "```"
-                feedback = arxiv_paper
+                
+                # 检查是否已经下载过这篇论文
+                existing_paper = next((paper for paper in self.phd.lit_review if paper["arxiv_id"] == query), None)
+                if existing_paper:
+                    feedback = f"论文 {query} 已经下载过，无需重复下载。以下是论文内容：\n{existing_paper['full_text']}"
+                else:
+                    if self.agentRxiv and "AgentRxiv" in query: full_text = GLOBAL_AGENTRXIV.retrieve_full_text(query,)
+                    else: full_text = arx_eng.retrieve_full_paper_text(query)
+                    # expiration timer so that paper does not remain in context too long
+                    arxiv_paper = f"```EXPIRATION {self.arxiv_paper_exp_time}\n" + full_text + "```"
+                    feedback = arxiv_paper
 
             # if add paper, extract and add to lit review, provide feedback
             elif "```ADD_PAPER" in resp:
@@ -573,21 +611,38 @@ class LaboratoryWorkflow:
         return False
 
 class AgentRxiv:
-    def __init__(self, lab_index=0):
+    def __init__(self, lab_index=0, port=None):
         self.lab_index = lab_index
         self.server_thread = None
-        self.initialize_server()
+        # 不再初始化服务器，因为应该只通过app.py启动
+        # self.initialize_server()
         self.pdf_text = dict()
         self.summaries = dict()
+        self.port = port if port is not None else 5000 + self.lab_index
+        
+        # 检查服务器是否已经运行
+        if not self.check_server_running():
+            print(f"[警告] AgentRxiv 服务器未在端口 {self.port} 运行")
+            print(f"请先运行 'python app.py --port {self.port}' 以启动服务器")
+            print("继续执行，但在需要访问AgentRxiv时可能会失败")
+    
+    def check_server_running(self):
+        """检查服务器是否已经运行"""
+        try:
+            # 尝试连接到服务器
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            result = s.connect_ex(('127.0.0.1', self.port))
+            s.close()
+            return result == 0
+        except:
+            return False
 
     def initialize_server(self):
-        # Calculate the port dynamically
-        port = 5000 + self.lab_index
-        # Start the server on the computed port using a lambda to pass the port value
-        self.server_thread = threading.Thread(target=lambda: self.run_server(port))
-        self.server_thread.daemon = True
-        self.server_thread.start()
-        time.sleep(5)  # allow time for the server to start up
+        # 这个方法保留但不再启动服务器
+        # 端口号已经在初始化方法中设置
+        print(f"AgentRxiv使用端口 {self.port}，请确保app.py已经在该端口上运行")
 
     @staticmethod
     def num_papers():
@@ -610,12 +665,13 @@ class AgentRxiv:
         return text
 
     def search_agentrxiv(self, search_query, num_papers):
-        # Use the dynamic port here as well
-        url = f'http://127.0.0.1:{5000 + self.lab_index}/api/search?q={search_query}'
+        # 使用动态端口号
+        port = 5000 + self.lab_index
+        url = f'http://127.0.0.1:{port}/api/search?q={search_query}'
         return_str = str()
         try:
-            with app.app_context():
-                update_papers_from_uploads()
+            # 不再导入app模块和使用应用上下文
+            # 直接通过API请求获取数据
             response = requests.get(url)
             response.raise_for_status()
             data = response.json()
@@ -646,7 +702,10 @@ class AgentRxiv:
         return return_str
 
     def run_server(self, port):
-        run_app(port=port)
+        # 不再从app中导入run_app并执行
+        # 此方法现在只是一个占位符，因为服务器应该只通过app.py启动
+        print(f"[INFO] AgentRxiv server should be started separately via 'python app.py' with port {port}")
+        # 可以在这里添加一些监控代码，但不应该启动服务器
 
 
 def parse_arguments():
@@ -727,6 +786,22 @@ if __name__ == "__main__":
     construct_agentRxiv = args.construct_agentRxiv.lower() == "true" if type(args.construct_agentRxiv) == str else args.construct_agentRxiv
     lab_index = int(args.lab_index) if type(args.construct_agentRxiv) == str else args.lab_index
     research_dir_path = args.research_dir_path  # 使用配置中的研究目录路径
+    
+    # 如果启用了AgentRxiv，提醒用户确保app.py已经运行
+    if agentRxiv:
+        print("\n" + "="*60)
+        print("注意: 您已启用AgentRxiv功能")
+        print("请确保已通过以下命令启动app.py服务器:")
+        print(f"python app.py --port {5000 + lab_index}")
+        print("="*60 + "\n")
+        
+        # 创建一个临时AgentRxiv对象来检查服务器是否运行
+        temp_agent_rxiv = AgentRxiv(lab_index)
+        if not temp_agent_rxiv.check_server_running():
+            user_continue = input("服务器似乎未运行。是否继续执行？(y/n): ").strip().lower()
+            if user_continue != 'y':
+                print("执行已取消。请先启动app.py服务器后再运行此脚本。")
+                sys.exit(1)
 
     try: num_papers_to_write = int(args.num_papers_to_write.lower()) if type(args.num_papers_to_write) == str else args.num_papers_to_write
     except Exception: raise Exception("args.num_papers_lit_review must be a valid integer!")
@@ -795,7 +870,15 @@ if __name__ == "__main__":
     }
     if parallel_labs:
         remove_figures()
-        GLOBAL_AGENTRXIV = AgentRxiv()
+        # 检查app.py服务器是否运行
+        print("\n" + "="*60)
+        print("注意: 并行模式下启用了AgentRxiv功能")
+        print("请确保已通过以下命令启动app.py服务器:")
+        for i in range(num_parallel_labs):
+            print(f"python app.py --port {5000 + i}")
+        print("="*60 + "\n")
+        
+        GLOBAL_AGENTRXIV = AgentRxiv()  # 这里不再启动服务器，只初始化对象用于API访问
         remove_directory(f"{research_dir_path}")
         os.mkdir(os.path.join(".", f"{research_dir_path}"))
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -803,6 +886,13 @@ if __name__ == "__main__":
         def run_lab(parallel_lab_index):
             time_str = str()
             time_now = time.time()
+            
+            # 检查该实验室对应的端口上的服务器是否运行
+            temp_agent_rxiv = AgentRxiv(parallel_lab_index)
+            if not temp_agent_rxiv.check_server_running():
+                print(f"[警告] 实验室 #{parallel_lab_index} 的AgentRxiv服务器未在端口 {5000 + parallel_lab_index} 运行")
+                print(f"该实验室的执行可能会失败，如果需要使用AgentRxiv功能")
+            
             for _paper_index in range(num_papers_to_write):
                 lab_dir = os.path.join(research_dir_path, f"research_dir_lab{parallel_lab_index}_paper{_paper_index}")
                 os.mkdir(lab_dir)
@@ -838,11 +928,10 @@ if __name__ == "__main__":
                 try: future.result()
                 except Exception as e: print(f"Error in lab: {e}")
 
-        raise NotImplementedError("Todo: implement parallel labs")
     else:
         # remove previous files
         remove_figures()
-        if agentRxiv: GLOBAL_AGENTRXIV = AgentRxiv(lab_index)
+        if agentRxiv: GLOBAL_AGENTRXIV = AgentRxiv(lab_index)  # 这里不再启动服务器，只初始化对象用于API访问
         if not agentRxiv:
             remove_directory(f"{research_dir_path}")
             os.mkdir(os.path.join(".", f"{research_dir_path}"))

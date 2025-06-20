@@ -1,5 +1,5 @@
-# 关闭用户交互模式
-copilot-mode: True
+# 开启用户交互模式
+copilot-mode: False
 
 # 研究主题：CNN结构综述与CIFAR10分类实验分析
 research-topic: "基于CIFAR-10的CNN结构综述与实验对比分析（含ResNet, DenseNet, SE-ResNet及Res2Net）"
@@ -15,7 +15,7 @@ llm-backend: "o4-mini-yunwu"
 lit-review-backend: "o4-mini-yunwu"
 
 # 基础语言设为中文
-language: "中文"
+language: "English"
 
 # 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
 num-papers-lit-review: 10
@@ -35,7 +35,7 @@ except-if-fail: False
 compile-latex: True  # 自动编译LaTeX生成PDF
 
 # 自定义任务说明
-custom-task-notes:
+task-notes:
   literature-review:
     - '系统调研CNN在图像分类中的发展历程，尤其在CIFAR-10任务上的应用。'
     - '重点综述经典CNN、ResNet、DenseNet、SE-ResNet与Res2Net的原理、结构与创新点。'

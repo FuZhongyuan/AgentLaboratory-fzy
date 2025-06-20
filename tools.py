@@ -352,12 +352,51 @@ class ArxivSearch:
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-def worker_run_code(code_str, output_queue):
+def worker_run_code(code_str, output_queue, user_id=None, output_dir=None):
+    """
+    在隔离的进程中执行代码字符串
+    @param code_str: 要执行的代码字符串
+    @param output_queue: 用于返回输出的队列
+    @param user_id: 用户ID，用于隔离文件生成
+    @param output_dir: 输出目录路径，如果不指定则使用基于user_id的默认路径
+    """
     output_capture = io.StringIO()
     sys.stdout = output_capture
+    
+    # 设置输出目录
+    if user_id and not output_dir:
+        output_dir = f"user_data/{user_id}"
+    
+    # 确保输出目录存在
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    
     try:
         # 创建一个globals字典，设置__name__为"__main__"
         globals_dict = {"__name__": "__main__"}
+        
+        # 如果存在输出目录，添加matplotlib配置来重定向图像保存位置
+        if output_dir:
+            # 在代码开头添加matplotlib配置，重定向savefig的默认路径
+            matplotlib_config = f"""
+import matplotlib.pyplot as plt
+import os
+
+# 设置matplotlib保存图像的默认路径
+_original_savefig = plt.savefig
+
+def _custom_savefig(fname, *args, **kwargs):
+    # 如果是相对路径且没有指定目录，则保存到指定的用户目录
+    if not os.path.isabs(fname) and '/' not in fname and '\\\\' not in fname:
+        new_path = os.path.join("{output_dir}", fname)
+        return _original_savefig(new_path, *args, **kwargs)
+    return _original_savefig(fname, *args, **kwargs)
+
+# 替换原始的savefig函数
+plt.savefig = _custom_savefig
+"""
+            code_str = matplotlib_config + code_str
+        
         # 检查代码中是否包含CUDA相关操作
         if "torch.cuda" in code_str or ".cuda()" in code_str or ".to('cuda')" in code_str or ".to(\"cuda\")" in code_str:
             # 添加CUDA设备检查和错误处理
@@ -369,21 +408,55 @@ else:
     print("CUDA不可用，使用CPU进行计算")
 """
             code_str = cuda_setup + code_str
+        
+        # 如果有输出目录，则修改代码中的文件路径引用
+        if output_dir:
+            # 在代码中替换直接引用的图像文件名，防止直接使用根目录
+            code_str = code_str.replace('plt.savefig("Figure_1.png")', f'plt.savefig("{output_dir}/Figure_1.png")')
+            code_str = code_str.replace('plt.savefig("Figure_2.png")', f'plt.savefig("{output_dir}/Figure_2.png")')
+            code_str = code_str.replace('print("\\nDone. Figures: Figure_1.png, Figure_2.png")', 
+                                        f'print("\\nDone. Figures: {output_dir}/Figure_1.png, {output_dir}/Figure_2.png")')
+        
         exec(code_str, globals_dict)
     except Exception as e:
         output_capture.write(f"[CODE EXECUTION ERROR]: {str(e)}\n")
         traceback.print_exc(file=output_capture)
     finally:
         sys.stdout = sys.__stdout__
-    output_queue.put(output_capture.getvalue())
+    
+    # 返回输出和文件路径信息
+    result = {
+        "output": output_capture.getvalue(),
+        "output_dir": output_dir if output_dir else ""
+    }
+    output_queue.put(result)
 
-def execute_code(code_str, timeout=600, MAX_LEN=1000):
-    #code_str = code_str.replace("\\n", "\n")
+def execute_code(code_str, timeout=600, MAX_LEN=1000, user_id=None, lab_dir=None):
+    """
+    执行代码字符串并返回结果
+    @param code_str: 要执行的代码字符串
+    @param timeout: 执行超时时间（秒）
+    @param MAX_LEN: 最大输出长度
+    @param user_id: 用户ID，用于隔离文件生成
+    @param lab_dir: 实验目录
+    @return: 执行结果字符串
+    """
     code_str = "from utils import *\n" + code_str
+    
+    # 检查不允许的操作
     if "load_dataset('pubmed" in code_str:
         return "[CODE EXECUTION ERROR] pubmed Download took way too long. Program terminated"
     if "exit(" in code_str:
         return "[CODE EXECUTION ERROR] The exit() command is not allowed you must remove this."
+    
+    # 设置输出目录，优先使用lab_dir，其次使用user_id
+    output_dir = None
+    if lab_dir:
+        output_dir = lab_dir
+    elif user_id:
+        # 为每个用户创建独立的数据目录
+        output_dir = f"user_data/{user_id}"
+        os.makedirs(output_dir, exist_ok=True)
     
     # 检查是否包含PyTorch多进程数据加载器
     if "DataLoader" in code_str and "num_workers" in code_str:
@@ -397,15 +470,23 @@ if mp.get_start_method(allow_none=True) != 'spawn':
         code_str = mp_setup + code_str
     
     output_queue = multiprocessing.Queue()
-    proc = multiprocessing.Process(target=worker_run_code, args=(code_str, output_queue))
+    proc = multiprocessing.Process(target=worker_run_code, args=(code_str, output_queue, user_id, output_dir))
     proc.start()
     proc.join(timeout)
+    
     if proc.is_alive():
         proc.terminate()  # 强制终止进程
         proc.join()
         return (f"[CODE EXECUTION ERROR]: Code execution exceeded the timeout limit of {timeout} seconds. "
                 "You must reduce the time complexity of your code.")
     else:
-        if not output_queue.empty(): output = output_queue.get()
-        else: output = ""
+        if not output_queue.empty():
+            result = output_queue.get()
+            output = result["output"]
+            # 记录输出目录，以便后续引用
+            if result["output_dir"]:
+                # 添加环境变量或全局状态来跟踪当前用户的输出目录
+                os.environ["CURRENT_OUTPUT_DIR"] = result["output_dir"]
+        else:
+            output = ""
         return output
