@@ -7,6 +7,7 @@ from datetime import date
 from common_imports import *
 from mlesolver import MLESolver
 import argparse, pickle, yaml
+import json
 
 GLOBAL_AGENTRXIV = None
 DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
@@ -285,7 +286,7 @@ class LaboratoryWorkflow:
         # instantiate mle-solver
         from papersolver import PaperSolver
         self.reference_papers = []
-        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=compile_pdf, save_loc=self.lab_dir)
+        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=self.research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=self.compile_pdf, save_loc=self.lab_dir)
         # run initialization for solver
         solver.initial_solve()
         # run solver for N mle optimization steps
@@ -303,8 +304,8 @@ class LaboratoryWorkflow:
             if retry: return retry
         self.set_agent_attr("report", report)
         readme = self.professor.generate_readme()
-        save_to_file(f"./{self.lab_dir}", "readme.md", readme)
-        save_to_file(f"./{self.lab_dir}", "report.txt", report)
+        save_to_file(self.lab_dir, "readme.md", readme)
+        save_to_file(self.lab_dir, "report.txt", report)
         self.reset_agents()
         return False
 
@@ -353,7 +354,7 @@ class LaboratoryWorkflow:
         experiment_notes = [_note["note"] for _note in self.ml_engineer.notes if "running experiments" in _note["phases"]]
         experiment_notes = f"Notes for the task objective: {experiment_notes}\n" if len(experiment_notes) > 0 else ""
         # instantiate mle-solver
-        solver = MLESolver(dataset_code=self.ml_engineer.dataset_code, notes=experiment_notes, insights=self.ml_engineer.lit_review_sum, max_steps=self.mlesolver_max_steps, plan=self.ml_engineer.plan, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["running experiments"])
+        solver = MLESolver(dataset_code=self.ml_engineer.dataset_code, notes=experiment_notes, insights=self.ml_engineer.lit_review_sum, max_steps=self.mlesolver_max_steps, plan=self.ml_engineer.plan, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["running experiments"], lab_dir=self.lab_dir)
         # run initialization for solver
         solver.initial_solve()
         # run solver for N mle optimization steps
@@ -362,15 +363,39 @@ class LaboratoryWorkflow:
         # get best code results
         code = "\n".join(solver.best_codes[0][0])
         # 执行代码并传递lab_dir，以便使用正确的用户目录保存文件
-        execute_results = execute_code(code, lab_dir=self.lab_dir)
+        code_result = execute_code(code, lab_dir=self.lab_dir)
+        code_output = code_result["output"]
+        code_file = code_result.get("code_file", None)
+        log_file = code_result.get("log_file", None)
+        
+        if self.verbose:
+            print(f"CODE OUTPUT: {code_output}")
+            if code_file:
+                print(f"代码已保存到: {code_file}")
+            if log_file:
+                print(f"执行日志已保存到: {log_file}")
+                
         score = solver.best_codes[0][1]
         exp_results = solver.best_codes[0][2]
         if self.verbose: print(f"Running experiments completed, reward function score: {score}")
         if self.human_in_loop_flag["running experiments"]:
             retry = self.human_in_loop("data preparation", code)
             if retry: return retry
-        save_to_file(f"./{self.lab_dir}/src", "run_experiments.py", code)
-        save_to_file(f"./{self.lab_dir}/src", "experiment_output.log", exp_results)
+        save_to_file(os.path.join(self.lab_dir, "src"), "run_experiments.py", code)
+        # 确保 exp_results 是字符串类型
+        if isinstance(exp_results, dict):
+            exp_results_str = json.dumps(exp_results, indent=2)
+        else:
+            exp_results_str = str(exp_results)
+        save_to_file(os.path.join(self.lab_dir, "src"), "experiment_output.log", exp_results_str)
+        # 如果有执行日志，将其作为附加信息保存
+        if log_file and os.path.exists(log_file):
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    log_content = f.read()
+                save_to_file(os.path.join(self.lab_dir, "src"), "execution_log.txt", log_content)
+            except Exception as e:
+                print(f"读取或保存执行日志时出错: {e}")
         # set results, reset agent state
         self.set_agent_attr("results_code", code)
         self.set_agent_attr("exp_results", exp_results)
@@ -405,22 +430,53 @@ class LaboratoryWorkflow:
                 # extract code
                 code = extract_prompt(resp, "EXECUTE_CODE")
                 # execute code
-                code_resp = execute_code(code, lab_dir=self.lab_dir)
-                if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
+                code_result = execute_code(code, lab_dir=self.lab_dir)
+                code_resp = code_result["output"]
+                code_file = code_result.get("code_file", None)
+                log_file = code_result.get("log_file", None)
+                
+                if self.verbose: 
+                    print("!"*100)
+                    print(f"CODE RESPONSE: {code_resp}")
+                    if code_file:
+                        print(f"代码已保存到: {code_file}")
+                    if log_file:
+                        print(f"执行日志已保存到: {log_file}")
+                
                 ml_feedback = f"\nCode Response: {code_resp}\n"
+                if code_file:
+                    ml_feedback += f"\n代码已保存到: {code_file}\n"
+                if log_file:
+                    ml_feedback += f"\n执行日志已保存到: {log_file}\n"
 
             if "```SUBMIT_CODE" in resp:
                 final_code = extract_prompt(resp, "SUBMIT_CODE")
-                code_resp = execute_code(final_code, timeout=60, lab_dir=self.lab_dir)
-                if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
+                code_result = execute_code(final_code, timeout=1200, lab_dir=self.lab_dir)
+                code_resp = code_result["output"]
+                code_file = code_result.get("code_file", None)
+                log_file = code_result.get("log_file", None)
+                
+                if self.verbose: 
+                    print("!"*100)
+                    print(f"CODE RESPONSE: {code_resp}")
+                    if code_file:
+                        print(f"代码已保存到: {code_file}")
+                    if log_file:
+                        print(f"执行日志已保存到: {log_file}")
+                
                 swe_feedback += f"\nCode Response: {code_resp}\n"
+                if code_file:
+                    swe_feedback += f"\n代码已保存到: {code_file}\n"
+                if log_file:
+                    swe_feedback += f"\n执行日志已保存到: {log_file}\n"
+                
                 if "[CODE EXECUTION ERROR]" in code_resp:
                     swe_feedback += "\nERROR: Final code had an error and could not be submitted! You must address and fix this error.\n"
                 else:
                     if self.human_in_loop_flag["data preparation"]:
                         retry = self.human_in_loop("data preparation", final_code)
                         if retry: return retry
-                    save_to_file(f"./{self.lab_dir}/src", "load_data.py", final_code)
+                    save_to_file(os.path.join(self.lab_dir, "src"), "load_data.py", final_code)
                     self.set_agent_attr("dataset_code", final_code)
                     # reset agent state
                     self.reset_agents()
@@ -942,8 +998,8 @@ if __name__ == "__main__":
         for _paper_index in range(num_papers_to_write):
             lab_direct = f"{research_dir_path}/research_dir_{_paper_index}_lab_{lab_index}"
             os.mkdir(os.path.join(".", lab_direct))
-            os.mkdir(os.path.join(f"./{lab_direct}", "src"))
-            os.mkdir(os.path.join(f"./{lab_direct}", "tex"))
+            os.mkdir(os.path.join(os.path.join(".", lab_direct), "src"))
+            os.mkdir(os.path.join(os.path.join(".", lab_direct), "tex"))
             lab = LaboratoryWorkflow(
                 research_topic=research_topic,
                 notes=task_notes_LLM,
@@ -958,7 +1014,7 @@ if __name__ == "__main__":
                 except_if_fail=except_if_fail,
                 agentRxiv=False,
                 lab_index=lab_index,
-                lab_dir=f"./{lab_direct}"
+                lab_dir=os.path.join(".", lab_direct)
             )
             lab.perform_research()
             time_str += str(time.time() - time_now) + " | "

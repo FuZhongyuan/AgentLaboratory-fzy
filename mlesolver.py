@@ -12,7 +12,8 @@ from pathlib import Path
 
 from contextlib import contextmanager
 import sys, os
-
+import logging
+import warnings
 
 os.environ["JOBLIB_VERBOSITY"] = "0"
 logging.basicConfig(level=logging.WARNING)
@@ -77,7 +78,16 @@ class Replace(Command):
     def parse_command(self, *args) -> tuple:
         new_code = extract_prompt(args[0], "REPLACE")
         code_exec = f"{args[1]}\n{new_code}"
-        code_ret = execute_code(code_exec)
+        # 获取当前工作目录作为lab_dir
+        current_dir = os.getcwd()
+        # 检查是否在用户目录下执行
+        if "user_data" in current_dir:
+            lab_dir = current_dir
+        else:
+            # 尝试从环境变量获取输出目录
+            lab_dir = os.environ.get("CURRENT_OUTPUT_DIR", current_dir)
+        # 传递lab_dir参数给execute_code
+        code_ret = execute_code(code_exec, lab_dir=lab_dir)
         if "[CODE EXECUTION ERROR]" in code_ret: return False, (None, code_ret,)
         return True, (new_code.split("\n"), code_ret)
 
@@ -113,7 +123,18 @@ class Edit(Command):
                 current_code.insert(args[0], _line)
             new_code = "\n".join(current_code)
             code_exec = f"{args[4]}\n{new_code}"
-            code_ret = execute_code(code_exec)
+            
+            # 获取当前工作目录作为lab_dir
+            current_dir = os.getcwd()
+            # 检查是否在用户目录下执行
+            if "user_data" in current_dir:
+                lab_dir = current_dir
+            else:
+                # 尝试从环境变量获取输出目录
+                lab_dir = os.environ.get("CURRENT_OUTPUT_DIR", current_dir)
+            # 传递lab_dir参数给execute_code
+            code_ret = execute_code(code_exec, lab_dir=lab_dir)
+            
             if "CODE EXECUTION ERROR" in code_ret: return (False, None, code_ret)
             return (True, current_code, code_ret)
         except Exception as e:
@@ -201,7 +222,7 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
 
 
 class MLESolver:
-    def __init__(self, dataset_code, openai_api_key=None, notes=None, max_steps=10, insights=None, plan=None, llm_str=None):
+    def __init__(self, dataset_code, openai_api_key=None, notes=None, max_steps=10, insights=None, plan=None, llm_str=None, lab_dir=None):
         self.supress_print = False
         if notes is None: self.notes = []
         else: self.notes = notes
@@ -221,6 +242,8 @@ class MLESolver:
         self.prev_code_ret = str()
         self.should_execute_code = True
         self.openai_api_key = openai_api_key
+        # 存储实验目录
+        self.lab_dir = lab_dir
 
     def initial_solve(self):
         """
@@ -558,7 +581,46 @@ class MLESolver:
         if self.prev_code_ret is not None:
             return self.prev_code_ret
         elif self.should_execute_code:
-            return execute_code("\n".join(self.code_lines))
+            # 如果没有设置lab_dir，尝试确定一个合适的目录
+            lab_dir = self.lab_dir
+            if lab_dir is None:
+                # 获取当前工作目录作为lab_dir
+                current_dir = os.getcwd()
+                # 检查是否在用户目录下执行
+                if "user_data" in current_dir:
+                    lab_dir = current_dir
+                else:
+                    # 尝试从环境变量获取输出目录
+                    lab_dir = os.environ.get("CURRENT_OUTPUT_DIR", current_dir)
+                    
+            code_result = execute_code("\n".join(self.code_lines), lab_dir=lab_dir)
+            
+            # 检查是否有日志文件，如果有则读取内容
+            log_file = code_result.get("log_file") if isinstance(code_result, dict) else None
+            log_content = ""
+            if log_file and os.path.exists(log_file):
+                try:
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        log_content = f.read()
+                    if not self.supress_print:
+                        print(f"执行日志已保存到: {log_file}")
+                except Exception as e:
+                    if not self.supress_print:
+                        print(f"读取执行日志时出错: {e}")
+            
+            # 始终确保返回字符串类型的输出
+            if isinstance(code_result, dict):
+                output = code_result["output"]
+                # 如果有日志内容，添加到输出中
+                if log_content and log_content.strip() != output.strip():
+                    output += f"\n\n[程序执行日志内容]\n{log_content}"
+                return output
+            elif isinstance(code_result, str):
+                # 兼容旧版本直接返回字符串的情况
+                return code_result
+            else:
+                # 处理其他可能的返回类型
+                return str(code_result)
         return "Changes have not yet been made to the code."
 
 

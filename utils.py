@@ -209,15 +209,34 @@ def save_to_file(location, filename, data):
     @param filename: 文件名
     @param data: 要保存的数据
     """
-    os.makedirs(location, exist_ok=True)
+    # 处理路径中的相对路径前缀（如 ./）
+    if location.startswith('./'):
+        location = location[2:]
     
-    filepath = os.path.join(location, filename)
+    # 获取当前工作目录
+    current_dir = os.getcwd()
+    
+    # 判断location是否是相对于当前工作目录的绝对路径
+    # 如果location已经是当前工作目录的一部分，则不需要再拼接
+    if os.path.isabs(location) or os.path.exists(location):
+        # 目录已存在或是绝对路径，直接使用
+        target_dir = location
+    else:
+        # 构建相对于当前工作目录的路径
+        target_dir = location
+    
+    # 确保目录存在
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # 构建完整的文件路径
+    filepath = os.path.join(target_dir, filename)
+    
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(data)
-        print(f"Data successfully saved to {filepath}")
+        print(f"数据已成功保存到 {filepath}")
     except Exception as e:
-        print(f"Error saving file {filename}: {e}")
+        print(f"保存文件 {filename} 时出错: {e}")
 
 def cleanup_user_data(user_id, older_than_days=30):
     """

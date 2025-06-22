@@ -54,6 +54,7 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
     if deepseek_api_key is not None:
         os.environ["DEEPSEEK_API_KEY"] = deepseek_api_key
     for _ in range(tries):
+        print(f"sending request to {model_str}, length of system_prompt: {len(system_prompt)}, length of prompt: {len(prompt)}")
         try:
             answer = None
             if model_str == "gpt-4o-mini" or model_str == "gpt4omini" or model_str == "gpt-4omini" or model_str == "gpt4o-mini":

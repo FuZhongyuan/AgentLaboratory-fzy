@@ -244,6 +244,30 @@ Agent Laboratory现已支持多用户并行使用和隔离的文件管理系统�
 - 研究结果可视化和共享
 - 与AgentRxiv集成，支持自主研究代理之间的协作
 
+## 论文版本自动切换功能
+
+为了提高论文获取的成功率，系统现在支持在论文查询失败时自动尝试获取同一论文的不同版本。
+
+### 主要特性：
+
+1. **自动版本切换**：
+   - 当论文查询达到最大重试次数(5次)后仍然失败时，系统会自动尝试查询同一论文的其他版本
+   - 支持在带版本号的论文ID(如1611.05431v3)和不带版本号的ID之间智能切换
+
+2. **版本遍历**：
+   - 对于带版本号的论文ID，系统会尝试v1到v5的所有版本
+   - 对于不带版本号的论文ID，系统会尝试添加v1后缀进行查询
+
+3. **错误处理优化**：
+   - 针对常见的论文获取错误(如"object has no attribute 'updated_parsed'")提供了解决方案
+   - 减少因特定版本不可用导致的研究中断
+
+4. **用户友好提示**：
+   - 当成功获取到替代版本时，系统会清晰标明原始版本和替代版本信息
+   - 提供详细的错误日志，便于问题排查
+
+这一功能显著提高了系统获取研究论文的稳定性，特别是在处理arXiv上的论文时，确保研究流程不会因单个论文版本的获取问题而中断。
+
 ## 技术改进
 
 ### 配置整合
@@ -353,3 +377,136 @@ http://localhost:5000
 - 确保已安装所有必要的依赖项
 - 在启用AgentRxiv功能时，确保服务器在正确的端口上运行
 - 对于非英语研究，请在配置文件中设置适当的语言参数
+
+# 多用户环境下的文件路径修复
+
+本次修改解决了多用户环境下文件保存路径的问题，确保每个用户的文件都保存在各自的项目目录中，而不是保存在根目录。
+
+## 主要修改
+
+1. **工作目录切换**
+   - 在 `worker_run_code` 函数中添加了工作目录切换逻辑，确保代码执行时使用用户的项目目录作为当前工作目录
+   - 添加了恢复原始工作目录的逻辑，确保执行结束后恢复系统状态
+
+2. **文件路径处理**
+   - 修改了 `save_to_file` 函数，处理相对路径前缀，确保文件保存在正确的位置
+   - 在 `worker_run_code` 函数中添加了文件路径处理逻辑，包括：
+     - 重定向 `open` 函数，确保相对路径的文件操作在用户目录中进行
+     - 添加 `ensure_user_path` 辅助函数，用于处理各种文件路径
+     - 替换常见的文件操作模式，如 `plt.savefig`、`with open`、`.to_csv` 等
+
+3. **修正相对路径使用**
+   - 修改了 `ai_lab_repo.py` 中的 `save_to_file` 调用，去掉了相对路径前缀 `./`
+   - 使用 `os.path.join` 构建文件路径，确保路径分隔符的正确性和平台兼容性
+
+## 效果
+
+这些修改确保了：
+
+1. 所有生成的文件（包括图像、数据文件等）都保存在用户的项目目录中
+2. 即使代码中使用了相对路径，也会被重定向到用户的项目目录
+3. 不同用户的文件不会相互干扰
+
+这使得系统可以安全地在多用户环境中运行，每个用户的研究项目都有自己独立的文件空间。
+
+# 修复状态保存序列化问题
+
+本次修改解决了在保存研究状态时出现的 "Can't pickle local object 'run_research_task.<locals>.<lambda>'" 错误。
+
+## 问题描述
+
+在多用户环境下，系统使用 pickle 模块来序列化和保存研究任务的状态，以便在需要时恢复。然而，当研究任务中包含局部定义的 lambda 函数作为回调时，pickle 无法序列化这些函数，导致状态保存失败。
+
+## 解决方案
+
+1. **创建全局回调包装器**：
+   - 添加了 `state_callback_wrapper` 函数，它接收 `task_id` 参数并返回一个可序列化的回调函数
+   - 这个包装器函数在模块级别定义，而不是在函数内部定义，因此可以被 pickle 序列化
+
+2. **替换 lambda 函数**：
+   - 将 `run_research_task` 函数中的 lambda 表达式替换为对 `state_callback_wrapper` 的调用
+   - 将 `continue_research_task` 函数中的 lambda 表达式也进行了相同的替换
+
+3. **保持参数传递**：
+   - 通过闭包机制，`state_callback_wrapper` 返回的函数仍然可以访问 `task_id` 参数
+   - 返回的函数签名与原始 lambda 函数相同，保持了接口的一致性
+
+## 效果
+
+这些修改确保了：
+
+1. 研究任务状态可以正确序列化和保存
+2. 用户可以暂停和恢复研究任务而不会遇到序列化错误
+3. 回调函数仍然能够正确地将状态保存事件通知给数据库
+
+这一改进增强了系统的稳定性和可靠性，特别是在长时间运行的研究任务中，用户可以安全地暂停和恢复任务，而不会丢失进度。
+
+## Code Execution Mechanism Optimization
+
+To improve system transparency and debuggability, we have optimized the code execution mechanism. The main improvements include:
+
+### Improvements
+
+1. **Code File Saving**: The system now first saves the generated code to a `generated_code.py` file in the user's project folder before executing it, rather than directly executing the code string in memory.
+
+2. **Execution Transparency**: Users can view and modify the generated code file before or after execution, enhancing the system's transparency and controllability.
+
+3. **Debugging Convenience**: By saving the code to a file, users can more easily debug and modify AI-generated code, especially in complex experiments and data processing tasks.
+
+4. **Enhanced Execution Results**: The `execute_code` function now returns richer information, including execution output and code file path, making it easier for users to perform further operations.
+
+### Effects
+
+1. **Enhanced Visibility**: Users can directly view the AI-generated code instead of treating it as a black box execution.
+
+2. **Simplified Debugging Process**: When code execution fails, users can directly view and modify the saved code file without having to extract code snippets from error messages.
+
+3. **Improved User Control**: Users can review the generated code before execution, enhancing the system's controllability and security.
+
+4. **Support for Iterative Development**: Users can iteratively develop based on AI-generated code, further improving experimental results.
+
+This optimization provides a better user experience and higher transparency while maintaining automation, particularly suitable for research scenarios requiring fine-grained control and debugging.
+
+## Fixed Code Execution Return Value Handling
+
+To address potential type errors in the code execution process, we have further optimized the code execution mechanism:
+
+### Improvements
+
+1. **Unified Return Format**: Modified the `execute_code` function to ensure a consistent dictionary format is returned in all cases (including error cases), containing `output` and `code_file` fields.
+
+2. **Enhanced Robustness**: Added more comprehensive type checking and handling in the `run_code` method of `mlesolver.py`, capable of correctly processing various possible return value types.
+
+3. **Backward Compatibility**: Maintained compatibility with older versions that directly return string formats, ensuring smooth transitions during system upgrades.
+
+### Effects
+
+1. **Avoided Type Errors**: Resolved the `TypeError: string indices must be integers, not 'str'` error caused by inconsistent return value formats.
+
+2. **Improved Stability**: Enhanced system stability in various execution environments, especially when handling error situations.
+
+3. **Better User Experience**: Reduced task failures due to internal errors, improving the completion rate of user research tasks.
+
+This fix ensures that the code execution mechanism works properly in all scenarios, enhancing the overall stability and reliability of the system.
+
+## Optimized Task Status Display
+
+To enhance user experience and provide more timely system feedback, we have optimized the task status display mechanism:
+
+### Improvements
+
+1. **Immediate Status Updates**: Modified the task creation logic to display tasks as "running" immediately after submission, rather than the default "pending" status.
+
+2. **Eliminated Status Delays**: Removed redundant status update operations in background threads, ensuring status changes are immediately reflected to users.
+
+3. **Streamlined Process**: Simplified the status update workflow, reducing unnecessary database operations.
+
+### Effects
+
+1. **Enhanced User Experience**: Users can immediately see that their task has started executing, reducing uncertainty during wait times.
+
+2. **More Accurate Status Feedback**: System status displays more accurately reflect the actual task execution state.
+
+3. **Reduced User Confusion**: Prevents confusion and duplicate submissions that might occur when tasks remain in "pending" status for extended periods.
+
+This optimization makes system status feedback more timely and accurate, improving the overall user experience.

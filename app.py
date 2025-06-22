@@ -410,6 +410,35 @@ def save_state_callback(task_id, phase, state_path):
             db.session.rollback()
             print(f"保存研究状态时出错: {e}")
 
+# 全局变量，用于存储task_id
+_TASK_ID_FOR_CALLBACK = None
+
+# 全局回调函数，用于解决pickle序列化问题
+def global_state_callback(phase, path):
+    """
+    全局回调函数，将通过state_callback_wrapper被间接调用
+    
+    参数:
+        phase (str): 研究阶段
+        path (str): 状态文件路径
+    """
+    return save_state_callback(_TASK_ID_FOR_CALLBACK, phase, path)
+
+# 全局回调函数包装器，用于解决pickle序列化问题
+def state_callback_wrapper(task_id):
+    """
+    创建一个可序列化的回调函数
+    
+    参数:
+        task_id (str): 任务ID
+    
+    返回:
+        function: 可序列化的回调函数
+    """
+    global _TASK_ID_FOR_CALLBACK
+    _TASK_ID_FOR_CALLBACK = task_id
+    return global_state_callback
+
 # 运行研究任务的函数
 def run_research_task(task_id, user_id, topic, config_path):
     """
@@ -424,8 +453,8 @@ def run_research_task(task_id, user_id, topic, config_path):
         from ai_lab_repo import LaboratoryWorkflow, AgentRxiv
         import ai_lab_repo
         
-        # 更新任务状态
-        update_task_status(task_id, 'running')
+        # 注释掉这行，因为在创建任务时已经设置了状态为'running'
+        # update_task_status(task_id, 'running')
         
         # 用户数据目录
         user_dir = os.path.join(app.config['USER_DATA_FOLDER'], user_id)
@@ -466,8 +495,8 @@ def run_research_task(task_id, user_id, topic, config_path):
             'research_topic': topic,
             'openai_api_key': api_key,
             'lab_dir': research_dir,
-            # 使用闭包创建回调函数，但不传递函数本身，而是传递参数
-            'state_callback': lambda phase, path: save_state_callback(task_id, phase, path),
+            # 使用可序列化的回调函数
+            'state_callback': state_callback_wrapper(task_id),
         }
         
         # 辅助函数：从配置中提取参数，如果不存在则使用默认值
@@ -575,17 +604,17 @@ def update_task_status(task_id, status, result_path=None, error_message=None):
             return
             
         # 更新任务状态
-        task.status = status
+            task.status = status
         
         # 如果任务已完成或失败，记录完成时间
-        if status in ['completed', 'failed']:
-            task.completed_at = datetime.utcnow()
+            if status in ['completed', 'failed']:
+                task.completed_at = datetime.utcnow()
             
         # 更新结果路径和错误信息（如果提供）
-        if result_path:
-            task.result_path = result_path
-        if error_message:
-            task.error_message = error_message
+            if result_path:
+                task.result_path = result_path
+            if error_message:
+                task.error_message = error_message
             
         # 保存更改
         try:
@@ -730,7 +759,8 @@ def start_research():
             id=task_id,
             user_id=user_id,
             topic=topic,
-            config_path=user_config_path
+            config_path=user_config_path,
+            status='running'  # 直接设置为运行中状态，而不是默认的等待中
         )
         db.session.add(new_task)
         db.session.commit()
@@ -961,7 +991,7 @@ def check_port_unix(port):
                 pid = parts[1]
                 print(f"发现占用端口 {port} 的进程 PID: {pid}")
                 # 注释掉实际终止进程的代码，仅显示信息
-                # subprocess.check_output(f'kill -9 {pid}', shell=True)
+                        # subprocess.check_output(f'kill -9 {pid}', shell=True)
                 print(f"如需终止该进程，请手动运行: kill -9 {pid}")
     except subprocess.CalledProcessError:
         # 命令执行失败，可能是端口未被占用
@@ -986,12 +1016,12 @@ def run_app(port=5000, config_file=None):
                 db_file_path = db_uri.replace('sqlite:///', '')
                 db_dir = os.path.dirname(db_file_path)
                 os.makedirs(db_dir, exist_ok=True)
-                
-                # 确保目录有写入权限
-                if not os.access(db_dir, os.W_OK):
-                    os.chmod(db_dir, 0o755)  # 设置目录权限为 rwxr-xr-x
-                    print(f"目录 {db_dir} 权限已设置为可写")
-            
+
+            # 确保目录有写入权限
+            if not os.access(db_dir, os.W_OK):
+                os.chmod(db_dir, 0o755)  # 设置目录权限为 rwxr-xr-x
+                print(f"目录 {db_dir} 权限已设置为可写")
+
             db.create_all()
             print("数据库初始化成功")
         except Exception as e:
@@ -1072,7 +1102,7 @@ def initialize_sentence_model():
     except Exception as e:
         print(f"加载句向量模型失败: {e}")
         print("继续运行，但搜索功能将无法使用")
-
+    
 def initialize_agentrxiv(port):
     """初始化AgentRxiv全局变量"""
     if AI_LAB_AVAILABLE:
@@ -1243,7 +1273,7 @@ def continue_research_task(task_id, user_id, state_path, phase):
         research_dir = os.path.join(user_dir, f"research_{task_id}")
         
         # 更新工作流参数
-        workflow.state_callback = lambda phase, path: save_state_callback(task_id, phase, path)
+        workflow.state_callback = state_callback_wrapper(task_id)
         workflow.lab_dir = research_dir
         
         # 继续执行研究
