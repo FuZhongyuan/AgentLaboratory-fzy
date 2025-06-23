@@ -6,8 +6,12 @@ from pathlib import Path
 from datetime import date
 from common_imports import *
 from mlesolver import MLESolver
+from datasolver import DataSolver
 import argparse, pickle, yaml
 import json
+import time
+import multiprocessing
+from tools import *
 
 GLOBAL_AGENTRXIV = None
 DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
@@ -16,7 +20,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, datasolver_max_steps=3, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -57,6 +61,7 @@ class LaboratoryWorkflow:
         self.num_agentrxiv_papers = agentrxiv_papers
         self.mlesolver_max_steps = mlesolver_max_steps
         self.papersolver_max_steps = papersolver_max_steps
+        self.datasolver_max_steps = datasolver_max_steps
 
         self.phases = [
             ("literature review", ["literature review"]),
@@ -408,89 +413,56 @@ class LaboratoryWorkflow:
         Perform data preparation phase
         @return: (bool) whether to repeat the phase
         """
-        max_tries = self.max_steps
-        swe_dialogue = str()
-        ml_feedback = str()
-        swe_feedback = str()  # 初始化 swe_feedback 变量
-        # iterate until max num tries to complete task is exhausted
-        for _i in range(max_tries):
-            resp = self.sw_engineer.inference(
-                self.research_topic, "data preparation",
-                feedback=f"{ml_feedback}", step=_i)
-            if self.verbose: print(f"Software Engineer: ", resp, "\n~~~~~~~~~~~")
-
-            swe_dialogue = str()
-            if "```DIALOGUE" in resp:
-                dialogue = extract_prompt(resp, "DIALOGUE")
-                swe_dialogue = f"The following is dialogue produced by the software engineer: {dialogue}"
-                if self.verbose: print("#"*40, "\n", swe_dialogue, "#"*40, "\n")
-
-            # identify if EXECUTE_CODE is in resp
-            if "```EXECUTE_CODE" in resp:
-                # extract code
-                code = extract_prompt(resp, "EXECUTE_CODE")
-                # execute code
-                code_result = execute_code(code, lab_dir=self.lab_dir)
-                code_resp = code_result["output"]
-                code_file = code_result.get("code_file", None)
-                log_file = code_result.get("log_file", None)
-                
-                if self.verbose: 
-                    print("!"*100)
-                    print(f"CODE RESPONSE: {code_resp}")
-                    if code_file:
-                        print(f"代码已保存到: {code_file}")
-                    if log_file:
-                        print(f"执行日志已保存到: {log_file}")
-                
-                ml_feedback = f"\nCode Response: {code_resp}\n"
-                if code_file:
-                    ml_feedback += f"\n代码已保存到: {code_file}\n"
-                if log_file:
-                    ml_feedback += f"\n执行日志已保存到: {log_file}\n"
-
-            if "```SUBMIT_CODE" in resp:
-                final_code = extract_prompt(resp, "SUBMIT_CODE")
-                code_result = execute_code(final_code, timeout=1200, lab_dir=self.lab_dir)
-                code_resp = code_result["output"]
-                code_file = code_result.get("code_file", None)
-                log_file = code_result.get("log_file", None)
-                
-                if self.verbose: 
-                    print("!"*100)
-                    print(f"CODE RESPONSE: {code_resp}")
-                    if code_file:
-                        print(f"代码已保存到: {code_file}")
-                    if log_file:
-                        print(f"执行日志已保存到: {log_file}")
-                
-                swe_feedback += f"\nCode Response: {code_resp}\n"
-                if code_file:
-                    swe_feedback += f"\n代码已保存到: {code_file}\n"
-                if log_file:
-                    swe_feedback += f"\n执行日志已保存到: {log_file}\n"
-                
-                if "[CODE EXECUTION ERROR]" in code_resp:
-                    swe_feedback += "\nERROR: Final code had an error and could not be submitted! You must address and fix this error.\n"
-                else:
-                    if self.human_in_loop_flag["data preparation"]:
-                        retry = self.human_in_loop("data preparation", final_code)
-                        if retry: return retry
-                    save_to_file(os.path.join(self.lab_dir, "src"), "load_data.py", final_code)
-                    self.set_agent_attr("dataset_code", final_code)
-                    # reset agent state
-                    self.reset_agents()
-                    self.statistics_per_phase["data preparation"]["steps"] = _i
-                    return False
+        # 数据准备笔记
+        data_prep_notes = [_note["note"] for _note in self.ml_engineer.notes if "data preparation" in _note["phases"]]
+        data_prep_notes = f"Notes for the data preparation task: {data_prep_notes}\n" if len(data_prep_notes) > 0 else ""
         
-        # 如果达到最大尝试次数仍未成功，返回False以继续下一阶段
-        if self.except_if_fail:
-            raise Exception("Max tries during phase: Data Preparation")
-        else:
-            print("警告：数据准备阶段达到最大尝试次数，将继续下一阶段")
-            self.set_agent_attr("dataset_code", "# 未能成功生成数据准备代码")
-            self.reset_agents()
-            return False
+        # 确保lab_dir是绝对路径
+        user_lab_dir = self.lab_dir
+        if user_lab_dir:
+            user_lab_dir = os.path.abspath(user_lab_dir)
+            if self.verbose:
+                print(f"数据准备将使用用户特定目录: {user_lab_dir}")
+        
+        # 实例化 DataSolver
+        solver = DataSolver(dataset_code="", notes=data_prep_notes, insights=self.ml_engineer.lit_review_sum, 
+                           max_steps=self.datasolver_max_steps, plan=self.ml_engineer.plan, 
+                           openai_api_key=self.openai_api_key, 
+                           llm_str=self.model_backbone["data preparation"], 
+                           lab_dir=user_lab_dir)
+        
+        # 运行初始化
+        solver.initial_solve()
+        
+        # 运行求解器进行数据准备优化
+        for _ in range(self.datasolver_max_steps-1):
+            solver.solve()
+            
+        # 获取最佳代码结果
+        code = "\n".join(solver.best_codes[0][0])
+        code_output = solver.run_code()
+        
+        if self.verbose:
+            print(f"DATA PREPARATION OUTPUT: {code_output}")
+            
+        # 评分
+        score = solver.best_codes[0][1]
+        if self.verbose: 
+            print(f"Data preparation completed, quality score: {score}")
+            
+        # 人工干预检查
+        if self.human_in_loop_flag["data preparation"]:
+            retry = self.human_in_loop("data preparation", code)
+            if retry: return retry
+            
+        # 保存代码
+        save_to_file(os.path.join(user_lab_dir, "src"), "load_data.py", code)
+        self.set_agent_attr("dataset_code", code)
+        
+        # 重置代理状态
+        self.reset_agents()
+        self.statistics_per_phase["data preparation"]["steps"] = self.datasolver_max_steps
+        return False
 
     def plan_formulation(self):
         """
@@ -893,6 +865,12 @@ if __name__ == "__main__":
         phases_in_notes.add(readable_phase)
         for _note in task_notes[_task]:
             task_notes_LLM.append({"phases": [readable_phase], "note": _note})
+
+    # 添加数据准备阶段的提示词，要求从网上下载轻量数据集
+    task_notes_LLM.append({
+        "phases": ["data preparation"],
+        "note": "Always prefer to download lightweight datasets from online sources rather than using local datasets. Use datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 100MB). This ensures better reproducibility and avoids local file dependency issues. If using PyTorch or TensorFlow built-in datasets, choose the smallest appropriate version for the task."
+    })
 
     # 如果指定语言不是英语，添加通用语言提示
     if args.language != "English":

@@ -1,0 +1,79 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：CNN结构综述与CIFAR10分类实验分析
+research-topic: "RNN结构综述与实验对比分析"
+research-dir-path: "RNN_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "中文"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: true  # 自动编译LaTeX生成PDF
+datasolver-max-steps: 3
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+  - '系统了解循环神经网络（RNN）与长短时记忆网络（LSTM）的基本原理、结构及其在序列建模中的应用。'
+  - '调研PyTorch中RNN、LSTM模块的使用方式与参数配置方法。'
+  - '查阅名字识别任务相关研究，理解该任务的输入格式、标签类型以及评估指标（如准确率与混淆矩阵）。'
+  - '参考LSTM与RNN在自然语言处理任务中的性能对比文献，为实验结果分析提供理论支持。'
+
+  plan-formulation:
+  - '实验目标为掌握RNN和LSTM原理，基于PyTorch实现名字识别任务，比较二者在验证集上的性能差异。'
+  - '明确两种模型的结构搭建流程：包括输入编码、隐藏状态初始化、前向传播与分类层设计等步骤。'
+  - '合理制定训练方案：选用优化器、损失函数、学习率等超参数，控制训练轮数以保证模型收敛。'
+
+  data-preparation:
+  - '使用名字识别数据集，进行必要的预处理，如字符编码、类别标签映射与划分训练集/验证集。'
+  - '可视化字符分布与类别数量，帮助理解模型面临的分类任务难度与不平衡性。'
+  - '为混淆矩阵的生成与分析提前准备标签索引映射表。'
+
+  running-experiments:
+  - '基于RNN结构运行训练过程，保存并绘制训练loss曲线、验证集准确率曲线与混淆矩阵图。'
+  - '自行构建并训练基于LSTM的网络结构，重复相同训练流程与评估方式，以保证可比性。'
+  - '对比两个模型的表现，观察收敛速度、准确率变化趋势、混淆矩阵中错误分布情况。'
+  - '加分尝试：手动实现LSTM或GRU模块替代PyTorch内置模块，验证其功能正确性。'
+
+  results-interpretation:
+  - '总结RNN与LSTM在名字识别任务上的训练表现差异，从loss收敛速度、最终准确率及错误类型分布三个角度进行分析。'
+  - '重点解释LSTM为何能在该任务中优于RNN，可从其门控机制、长期记忆能力、梯度传递稳定性等方面展开。'
+  - '配合准确率曲线图与预测混淆矩阵，对模型误判规律进行直观展示与分析说明。'
+
+  report-writing:
+  - '整理实验结果并编写实验报告，包括以下部分：'
+  - '- 原始RNN模型结构（截图或print输出）'
+  - '- RNN的训练loss曲线、准确率曲线与预测矩阵图'
+  - '- LSTM的模型结构、loss曲线、准确率曲线与预测矩阵图'
+  - '- RNN与LSTM性能对比的理论分析与实验验证'
+  - '图表配注清晰、实验过程交代完整，语言通顺、逻辑严谨。所有图表应通过\\includegraphics 引入，图注完整，配图风格统一。'
+
+  report-refinement:
+  - '检查实验报告中的图表是否清晰、曲线是否标注明确，混淆矩阵是否配有标签说明。'
+  - '润色模型结构描述、分析结论表述，避免语义重复或逻辑跳跃。'
+  - '确保所有代码截图或结构输出格式统一，必要时补充关键函数的简要解释，增强可读性与完整性。'
+  - '若实现了自定义LSTM/GRU模块，附上代码说明与对比分析，作为加分项完整呈现。'

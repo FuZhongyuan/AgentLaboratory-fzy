@@ -11,6 +11,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 初始化配置相关功能
     initConfigurationFeatures();
+    
+    // 初始化任务状态实时更新
+    initTaskStatusUpdates();
+});
+
+// 页面卸载时关闭SSE连接
+window.addEventListener('beforeunload', function() {
+    if (window.taskUpdateSource) {
+        window.taskUpdateSource.close();
+        console.log('任务更新连接已关闭');
+    }
 });
 
 /**
@@ -170,6 +181,224 @@ function initConfigurationFeatures() {
 }
 
 /**
+ * 初始化任务状态实时更新功能
+ */
+function initTaskStatusUpdates() {
+    // 检查浏览器是否支持EventSource
+    if (typeof EventSource === 'undefined') {
+        console.warn('当前浏览器不支持SSE，无法接收实时任务状态更新');
+        return;
+    }
+    
+    // 关闭之前的连接（如果存在）
+    if (window.taskUpdateSource) {
+        window.taskUpdateSource.close();
+    }
+    
+    // 创建新的SSE连接
+    window.taskUpdateSource = new EventSource('/api/task_updates');
+    
+    // 连接打开时
+    window.taskUpdateSource.onopen = function(event) {
+        console.log('任务状态更新连接已建立');
+    };
+    
+    // 添加连接成功事件监听
+    window.taskUpdateSource.addEventListener('connected', function(event) {
+        const data = JSON.parse(event.data);
+        console.log('SSE连接已建立:', data.message);
+    });
+    
+    // 添加任务更新事件监听
+    window.taskUpdateSource.addEventListener('task_update', function(event) {
+        try {
+            const update = JSON.parse(event.data);
+            console.log(`收到任务 ${update.task_id} 状态更新: ${update.status}`);
+            
+            // 处理任务状态更新
+            updateTaskUI(update);
+        } catch (error) {
+            console.error('解析任务更新数据失败:', error);
+        }
+    });
+    
+    // 添加心跳事件监听
+    window.taskUpdateSource.addEventListener('heartbeat', function(event) {
+        // 可以在控制台中查看心跳包，但在生产环境中应该关闭此日志
+        // const data = JSON.parse(event.data);
+        // console.log(`心跳包 #${data.count}`);
+    });
+    
+    // 接收通用消息时（向后兼容）
+    window.taskUpdateSource.onmessage = function(event) {
+        // 解析更新数据
+        try {
+            const update = JSON.parse(event.data);
+            
+            // 处理不同类型的消息
+            if (update.type === 'task_update') {
+                console.log(`收到通用任务更新: ${update.task_id} 状态: ${update.status}`);
+                updateTaskUI(update);
+            }
+        } catch (error) {
+            console.error('解析任务更新数据失败:', error);
+        }
+    };
+    
+    // 错误处理
+    window.taskUpdateSource.onerror = function(event) {
+        console.error('任务状态更新连接错误，等待自动重连...');
+        // 浏览器会自动重试连接，不需要手动处理
+    };
+}
+
+/**
+ * 处理任务状态更新，更新UI
+ * @param {object} update - 任务更新数据
+ */
+function updateTaskUI(update) {
+    // 找到任务表格中对应的行（如果存在）
+    const tasksTableBody = document.getElementById('tasks-table-body');
+    
+    // 任务列表是否可见
+    const isTaskListVisible = tasksTableBody && tasksTableBody.parentElement.offsetParent !== null;
+    
+    if (isTaskListVisible) {
+        // 优先尝试直接更新现有的行
+        const taskRows = Array.from(tasksTableBody.querySelectorAll('tr'));
+        const taskRow = taskRows.find(row => {
+            const viewResultBtn = row.querySelector('.view-result');
+            const pauseTaskBtn = row.querySelector('.pause-task');
+            const resumeTaskBtn = row.querySelector('.resume-task');
+            
+            if (viewResultBtn && viewResultBtn.getAttribute('data-task-id') === update.task_id) {
+                return true;
+            }
+            if (pauseTaskBtn && pauseTaskBtn.getAttribute('data-task-id') === update.task_id) {
+                return true;
+            }
+            if (resumeTaskBtn && resumeTaskBtn.getAttribute('data-task-id') === update.task_id) {
+                return true;
+            }
+            return false;
+        });
+        
+        if (taskRow) {
+            // 找到了任务行，更新状态
+            const statusCell = taskRow.querySelector('td:nth-child(2)');
+            if (statusCell) {
+                // 状态标签样式
+                let statusBadgeClass = 'badge ';
+                switch(update.status) {
+                    case 'pending':
+                        statusBadgeClass += 'badge-pending';
+                        break;
+                    case 'running':
+                        statusBadgeClass += 'badge-running';
+                        break;
+                    case 'completed':
+                        statusBadgeClass += 'badge-completed';
+                        break;
+                    case 'failed':
+                        statusBadgeClass += 'badge-failed';
+                        break;
+                    case 'paused':
+                        statusBadgeClass += 'badge-paused';
+                        break;
+                    case 'translating':
+                        statusBadgeClass += 'badge-translating';
+                        break;
+                    default:
+                        statusBadgeClass += 'bg-secondary';
+                }
+                
+                // 状态文本
+                let statusText = {
+                    'pending': '等待中',
+                    'running': '进行中',
+                    'completed': '已完成',
+                    'failed': '失败',
+                    'paused': '已暂停',
+                    'translating': '翻译中'
+                }[update.status] || update.status;
+                
+                // 更新状态单元格
+                statusCell.innerHTML = `<span class="${statusBadgeClass}">${statusText}</span>`;
+                
+                // 更新操作按钮
+                const actionCell = taskRow.querySelector('td:nth-child(4)');
+                if (actionCell) {
+                    let actionButtons = '';
+                    
+                    // 查看结果按钮（仅完成状态可用）
+                    if (update.status === 'completed') {
+                        actionButtons += `<button class="btn btn-sm btn-primary view-result me-1" data-task-id="${update.task_id}">查看结果</button>`;
+                    } else {
+                        actionButtons += `<button class="btn btn-sm btn-secondary me-1" ${update.status === 'failed' ? '' : 'disabled'}>查看结果</button>`;
+                    }
+                    
+                    // 暂停按钮（仅运行状态可用）
+                    if (update.status === 'running') {
+                        actionButtons += `<button class="btn btn-sm btn-warning pause-task me-1" data-task-id="${update.task_id}">暂停</button>`;
+                    }
+                    
+                    // 继续按钮（仅暂停状态可用）
+                    if (update.status === 'paused') {
+                        actionButtons += `<button class="btn btn-sm btn-success resume-task" data-task-id="${update.task_id}">继续</button>`;
+                    }
+                    
+                    actionCell.innerHTML = actionButtons;
+                    
+                    // 重新绑定事件
+                    const newViewResultBtn = actionCell.querySelector('.view-result');
+                    if (newViewResultBtn) {
+                        newViewResultBtn.addEventListener('click', function() {
+                            viewTaskResult(this.getAttribute('data-task-id'));
+                        });
+                    }
+                    
+                    const newPauseTaskBtn = actionCell.querySelector('.pause-task');
+                    if (newPauseTaskBtn) {
+                        newPauseTaskBtn.addEventListener('click', function() {
+                            pauseResearchTask(this.getAttribute('data-task-id'));
+                        });
+                    }
+                    
+                    const newResumeTaskBtn = actionCell.querySelector('.resume-task');
+                    if (newResumeTaskBtn) {
+                        newResumeTaskBtn.addEventListener('click', function() {
+                            resumeResearchTask(this.getAttribute('data-task-id'));
+                        });
+                    }
+                }
+            }
+        } else {
+            // 如果没找到对应行，刷新整个任务列表
+            loadTasks();
+        }
+    }
+    
+    // 显示适当的通知
+    if (update.status === 'completed') {
+        showAlert(`任务已完成！`, 'success');
+    } else if (update.status === 'failed') {
+        showAlert(`任务执行失败`, 'danger');
+    }
+    
+    // 如果任务正在查看中且已完成翻译，自动刷新结果查看
+    const resultModal = document.getElementById('resultModal');
+    if (resultModal && resultModal.classList.contains('show') && 
+        update.status === 'completed' && update.is_translated) {
+        
+        // 重新加载任务结果
+        viewTaskResult(update.task_id);
+        
+        // 显示翻译完成通知
+        showAlert(`报告已翻译为${update.language}！`, 'success');
+    }
+}
+
+/**
  * 获取配置模板内容
  * @param {string} templateName - 模板文件名
  */
@@ -223,6 +452,10 @@ function populateConfigForm(config) {
     
     if (document.getElementById('mlesolver-steps')) {
         document.getElementById('mlesolver-steps').value = config['mlesolver-max-steps'] || 3;
+    }
+    
+    if (document.getElementById('datasolver-steps')) {
+        document.getElementById('datasolver-steps').value = config['datasolver-max-steps'] || 3;
     }
     
     if (document.getElementById('papersolver-steps')) {
@@ -299,6 +532,7 @@ function collectCustomConfig() {
         'agentrxiv-papers': parseInt(document.getElementById('agentrxiv-papers').value) || 5,
         'num-papers-to-write': parseInt(document.getElementById('papers-to-write').value) || 1,
         'mlesolver-max-steps': parseInt(document.getElementById('mlesolver-steps').value) || 3,
+        'datasolver-max-steps': parseInt(document.getElementById('datasolver-steps').value) || 3,
         'papersolver-max-steps': parseInt(document.getElementById('papersolver-steps').value) || 1,
         'copilot-mode': document.getElementById('copilot-mode').checked,
         'compile-latex': document.getElementById('compile-latex').checked,
@@ -484,6 +718,9 @@ function loadTasks() {
                         case 'paused':
                             statusBadgeClass += 'badge-paused';
                             break;
+                        case 'translating':
+                            statusBadgeClass += 'badge-translating';
+                            break;
                         default:
                             statusBadgeClass += 'bg-secondary';
                     }
@@ -494,7 +731,8 @@ function loadTasks() {
                         'running': '进行中',
                         'completed': '已完成',
                         'failed': '失败',
-                        'paused': '已暂停'
+                        'paused': '已暂停',
+                        'translating': '翻译中'
                     }[task.status] || task.status;
                     
                     // 构建操作按钮
@@ -680,16 +918,84 @@ function viewTaskResult(taskId) {
                 downloadPdfBtn.classList.add('d-none');
             }
             
+            // 检查报告是否已翻译及其语言
+            let translateButtonHtml = '';
+            if (data.original_report_path && data.language && data.language !== 'English') {
+                // 已翻译报告
+                translateButtonHtml = `
+                    <div class="translate-controls mb-3">
+                        <div class="btn-group" role="group" aria-label="切换报告语言">
+                            <button type="button" class="btn btn-outline-secondary switch-language" data-language="original">查看英文原文</button>
+                            <button type="button" class="btn btn-primary switch-language active" data-language="translated">查看${data.language}译文</button>
+                        </div>
+                    </div>
+                `;
+
+                // 添加原始英文报告（隐藏）
+                if (data.original_report) {
+                    const originalReportHtml = marked.parse(data.original_report || '');
+                    translateButtonHtml += `
+                        <div id="original-report" class="d-none">
+                            <div class="research-report mb-4">
+                                <h2>研究报告（英文原文）</h2>
+                                <div class="report-content">
+                                    ${originalReportHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } else if (!data.is_translated && data.language && data.language !== 'English') {
+                // 未翻译报告，但需要翻译
+                translateButtonHtml = `
+                    <div class="translate-controls mb-3">
+                        <button type="button" class="btn btn-info translate-report" data-task-id="${taskId}" data-language="${data.language}">
+                            翻译为${data.language}
+                        </button>
+                        <small class="text-muted ms-2">当前显示英文原文</small>
+                    </div>
+                `;
+            }
+            
             // 更新结果内容
             resultContent.innerHTML = `
-                <div class="research-report mb-4">
-                    <h2>研究报告</h2>
-                    <div class="report-content">
-                        ${reportHtml}
+                ${translateButtonHtml}
+                <div id="translated-report">
+                    <div class="research-report mb-4">
+                        <h2>研究报告${data.is_translated ? ` (${data.language})` : ''}</h2>
+                        <div class="report-content">
+                            ${reportHtml}
+                        </div>
                     </div>
                 </div>
                 ${imagesHtml}
             `;
+            
+            // 绑定语言切换事件
+            document.querySelectorAll('.switch-language').forEach(button => {
+                button.addEventListener('click', function() {
+                    const language = this.getAttribute('data-language');
+                    document.querySelectorAll('.switch-language').forEach(btn => btn.classList.remove('active', 'btn-primary'));
+                    this.classList.add('active', 'btn-primary');
+                    
+                    if (language === 'original') {
+                        document.getElementById('translated-report').classList.add('d-none');
+                        document.getElementById('original-report').classList.remove('d-none');
+                    } else {
+                        document.getElementById('original-report').classList.add('d-none');
+                        document.getElementById('translated-report').classList.remove('d-none');
+                    }
+                });
+            });
+            
+            // 绑定翻译按钮事件
+            document.querySelectorAll('.translate-report').forEach(button => {
+                button.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-task-id');
+                    const language = this.getAttribute('data-language');
+                    translateReport(taskId, language);
+                });
+            });
         })
         .catch(error => {
             console.error('Error viewing result:', error);
@@ -700,6 +1006,66 @@ function viewTaskResult(taskId) {
                 </div>
             `;
         });
+}
+
+/**
+ * 翻译研究报告
+ * @param {string} taskId - 任务ID
+ * @param {string} language - 目标语言
+ */
+function translateReport(taskId, language) {
+    // 获取翻译按钮并显示加载状态
+    const translateBtn = document.querySelector(`.translate-report[data-task-id="${taskId}"]`);
+    if (translateBtn) {
+        translateBtn.disabled = true;
+        translateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> 翻译中...';
+    }
+    
+    // 调用翻译API
+    fetch(`/api/translate_report/${taskId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            language: language
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('翻译请求失败');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (translateBtn) {
+            translateBtn.innerHTML = `<i class="bi bi-check-circle"></i> 翻译请求已提交`;
+            
+            // 添加提示
+            const translateControls = translateBtn.closest('.translate-controls');
+            if (translateControls) {
+                const statusText = document.createElement('div');
+                statusText.className = 'alert alert-info mt-2';
+                statusText.innerHTML = `
+                    <p><i class="bi bi-info-circle"></i> 翻译已开始处理，这可能需要几分钟时间。</p>
+                    <p>翻译完成后，页面将自动刷新显示翻译结果。</p>
+                `;
+                translateControls.appendChild(statusText);
+            }
+        }
+        
+        showAlert('翻译请求已提交，正在处理中...', 'info');
+    })
+    .catch(error => {
+        console.error('Error translating report:', error);
+        showAlert('翻译请求失败: ' + error.message, 'danger');
+        
+        // 恢复按钮状态
+        if (translateBtn) {
+            translateBtn.disabled = false;
+            translateBtn.innerHTML = `翻译为${language}`;
+        }
+    });
 }
 
 /**

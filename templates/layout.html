@@ -86,9 +86,9 @@
                         <div class="mb-3" id="template-selection">
                             <label for="config-template" class="form-label">选择配置模板</label>
                             <select class="form-select" id="config-template">
-                                <option value="MATH_agentlab.yaml">数学问题求解 (Agent Lab)</option>
-                                <option value="MATH_agentrxiv.yaml">数学问题求解 (Agent Rxiv)</option>
                                 <option value="CIFAR_CNN.yaml">CNN图像分类分析</option>
+                                <option value="RNN.yaml">RNN序列分析</option>
+                                <option value="seq2seq.yaml">seq2seq序列分析</option>
                             </select>
                         </div>
                         
@@ -135,6 +135,10 @@
                                     <div class="col-md-6">
                                         <label for="mlesolver-steps" class="form-label">MLE求解步骤数</label>
                                         <input type="number" class="form-control" id="mlesolver-steps" value="3" min="1" max="10">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="datasolver-steps" class="form-label">数据准备步骤数</label>
+                                        <input type="number" class="form-control" id="datasolver-steps" value="3" min="1" max="10">
                                     </div>
                                     <div class="col-md-6">
                                         <label for="papersolver-steps" class="form-label">Paper求解步骤数</label>

@@ -181,6 +181,27 @@ body {
     color: white;
 }
 
+/* 添加翻译中状态徽章样式 */
+.badge-translating {
+    background-color: #6f42c1;
+    color: white;
+}
+
+/* 原始英文和翻译切换按钮样式 */
+.translate-controls {
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
+
+.translate-controls .btn-group {
+    margin-bottom: 10px;
+}
+
+/* 报告语言切换按钮 */
+.switch-language {
+    min-width: 120px;
+}
+
 /* 配置界面样式 */
 .modal-dialog.modal-lg {
     max-width: 800px;

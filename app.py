@@ -5,8 +5,9 @@ import yaml
 import subprocess
 import sys
 import pickle
+import json
 
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify, session, Response, stream_with_context
 from werkzeug.utils import secure_filename
 import os
 from PyPDF2 import PdfReader
@@ -14,6 +15,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import shutil
 
 # 移除直接导入，改为在需要的函数中导入
 AI_LAB_AVAILABLE = True
@@ -21,9 +23,13 @@ try:
     # 测试是否可以导入，但不在模块顶层导入
     import ai_lab_repo
     AI_LAB_AVAILABLE = True
+    # 从ai_lab_repo导入DEFAULT_LLM_BACKBONE
+    from ai_lab_repo import DEFAULT_LLM_BACKBONE
 except ImportError:
     AI_LAB_AVAILABLE = False
     print("警告：无法导入AI实验室，研究功能将不可用")
+    # 如果无法导入，定义默认值
+    DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
@@ -361,6 +367,9 @@ class ResearchTask(db.Model):
     config_path = db.Column(db.String(255), nullable=True)
     result_path = db.Column(db.String(255), nullable=True)
     error_message = db.Column(db.Text, nullable=True)
+    report_language = db.Column(db.String(20), default='English')  # 报告最终语言
+    original_report_path = db.Column(db.String(255), nullable=True)  # 原始英文报告路径
+    is_translated = db.Column(db.Boolean, default=False)  # 是否已翻译
 
 # 添加研究状态模型
 class ResearchState(db.Model):
@@ -453,9 +462,6 @@ def run_research_task(task_id, user_id, topic, config_path):
         from ai_lab_repo import LaboratoryWorkflow, AgentRxiv
         import ai_lab_repo
         
-        # 注释掉这行，因为在创建任务时已经设置了状态为'running'
-        # update_task_status(task_id, 'running')
-        
         # 用户数据目录
         user_dir = os.path.join(app.config['USER_DATA_FOLDER'], user_id)
         research_dir = os.path.join(user_dir, f"research_{task_id}")
@@ -471,14 +477,24 @@ def run_research_task(task_id, user_id, topic, config_path):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
-        # 处理语言设置
-        language = config.get('language', app.config.get('DEFAULT_LANGUAGE', 'English'))
-        # 如果指定了语言，将其添加到研究主题中
-        if language and language != 'English':
-            topic = f"[{language}] {topic}"
+        # 获取目标报告语言
+        target_language = config.get('language', app.config.get('DEFAULT_LANGUAGE', 'English'))
+        
+        # 存储目标语言到任务记录
+        with app.app_context():
+            task = ResearchTask.query.get(task_id)
+            if task:
+                task.report_language = target_language
+                db.session.commit()
+        
+        # 更新研究主题 - 不再在主题前添加语言标记，保持英文交互
+        clean_topic = topic
+        if '[' in topic and ']' in topic:
+            # 移除可能已有的语言标记
+            clean_topic = topic[topic.index(']')+1:].strip()
         
         # 更新配置
-        config['research-topic'] = topic
+        config['research-topic'] = clean_topic
         config['research-dir-path'] = research_dir
         
         # 写入更新后的配置
@@ -492,7 +508,7 @@ def run_research_task(task_id, user_id, topic, config_path):
         
         # 创建工作流实例的基本参数
         workflow_params = {
-            'research_topic': topic,
+            'research_topic': clean_topic,
             'openai_api_key': api_key,
             'lab_dir': research_dir,
             # 使用可序列化的回调函数
@@ -513,6 +529,7 @@ def run_research_task(task_id, user_id, topic, config_path):
             ('agentrxiv-papers', 'agentrxiv_papers', 'DEFAULT_AGENTRXIV_PAPERS'),
             ('compile-latex', 'compile_pdf', 'DEFAULT_COMPILE_LATEX'),
             ('mlesolver-max-steps', 'mlesolver_max_steps', 'DEFAULT_MLESOLVER_MAX_STEPS'),
+            ('datasolver-max-steps', 'datasolver_max_steps', 'DEFAULT_DATASOLVER_MAX_STEPS'),
             ('papersolver-max-steps', 'papersolver_max_steps', 'DEFAULT_PAPERSOLVER_MAX_STEPS'),
             ('lab-index', 'lab_index', 'DEFAULT_LAB_INDEX')
         ]
@@ -535,11 +552,17 @@ def run_research_task(task_id, user_id, topic, config_path):
                 for note in notes:
                     task_notes_LLM.append({"phases": [readable_phase], "note": note})
             
-            # 添加语言提示
-            if phases_in_notes:  # 只有当有任务阶段时才添加语言提示
+            # 添加数据准备阶段的提示词，要求从网上下载轻量数据集
+            task_notes_LLM.append({
+                "phases": ["data preparation"],
+                "note": "Always prefer to download lightweight datasets from online sources rather than using local datasets. Use datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 100MB). This ensures better reproducibility and avoids local file dependency issues. If using PyTorch or TensorFlow built-in datasets, choose the smallest appropriate version for the task."
+            })
+            
+            # 添加语言提示 - 始终使用英文进行交互
+            if phases_in_notes:
                 task_notes_LLM.append({
                     "phases": list(phases_in_notes),
-                    "note": f"You should always write in the following language to converse and to write the report: {language}"
+                    "note": "You should always write in English to converse and write the initial report."
                 })
                 
             workflow_params['notes'] = task_notes_LLM
@@ -581,11 +604,89 @@ def run_research_task(task_id, user_id, topic, config_path):
         results_path = os.path.join(research_dir, "report.txt")
         update_task_status(task_id, 'completed', results_path)
         
+        # 如果目标语言不是英语，自动启动翻译任务
+        if target_language != 'English':
+            try:
+                # 启动翻译线程
+                translation_thread = threading.Thread(
+                    target=run_translation_task,
+                    args=(task_id, user_id, target_language)
+                )
+                translation_thread.daemon = True
+                translation_thread.start()
+                print(f"已启动翻译线程，将报告翻译为{target_language}")
+            except Exception as e:
+                print(f"启动翻译线程失败: {e}")
+                # 翻译失败不影响整体任务完成状态
+                pass
+        
     except Exception as e:
         import traceback
         error_msg = f"研究任务执行错误: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         update_task_status(task_id, 'failed', error_message=error_msg)
+
+# 任务状态更新通知
+task_update_listeners = {}
+
+# SSE接口：监听任务状态更新
+@app.route('/api/task_updates', methods=['GET'])
+def task_updates():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'User session not found'}), 401
+    
+    def event_stream():
+        # 为当前用户创建一个唯一的监听器ID
+        listener_id = str(uuid.uuid4())
+        
+        # 创建该用户的消息队列
+        if user_id not in task_update_listeners:
+            task_update_listeners[user_id] = {}
+        
+        # 初始化队列
+        task_update_listeners[user_id][listener_id] = []
+        
+        # 发送初始连接事件
+        yield f"id: {listener_id}\n"
+        yield f"event: connected\n"
+        yield f"data: {json.dumps({'type': 'connected', 'message': '连接已建立'})}\n\n"
+        
+        try:
+            # 发送重连指令和心跳间隔
+            yield f"retry: 10000\n\n"  # 如果连接断开，10秒后自动重连
+            
+            heartbeat_count = 0
+            while True:
+                # 检查队列中是否有消息
+                if task_update_listeners[user_id][listener_id]:
+                    update = task_update_listeners[user_id][listener_id].pop(0)
+                    yield f"event: task_update\n"
+                    yield f"data: {json.dumps(update)}\n\n"
+                else:
+                    # 发送心跳包以保持连接
+                    heartbeat_count += 1
+                    yield f"event: heartbeat\n"
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'count': heartbeat_count})}\n\n"
+                
+                # 等待一小段时间
+                time.sleep(2)
+        finally:
+            # 清理
+            if user_id in task_update_listeners and listener_id in task_update_listeners[user_id]:
+                del task_update_listeners[user_id][listener_id]
+                if not task_update_listeners[user_id]:
+                    del task_update_listeners[user_id]
+                print(f"SSE连接已关闭: {user_id}/{listener_id}")
+    
+    return Response(stream_with_context(event_stream()), 
+                    mimetype="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache, no-transform", 
+                        "X-Accel-Buffering": "no",
+                        "Content-Type": "text/event-stream; charset=utf-8",
+                        "Connection": "keep-alive"
+                    })
 
 def update_task_status(task_id, status, result_path=None, error_message=None):
     """
@@ -593,36 +694,55 @@ def update_task_status(task_id, status, result_path=None, error_message=None):
     
     参数:
         task_id (str): 任务ID
-        status (str): 任务状态 (pending, running, completed, failed)
+        status (str): 任务状态 (pending, running, completed, failed, translating)
         result_path (str, optional): 结果文件路径
         error_message (str, optional): 错误信息
     """
+    # 创建应用上下文
     with app.app_context():
-        task = ResearchTask.query.get(task_id)
-        if not task:
-            print(f"警告: 找不到任务ID {task_id}")
-            return
-            
-        # 更新任务状态
+        try:
+            task = ResearchTask.query.get(task_id)
+            if not task:
+                print(f"警告: 找不到任务ID {task_id}")
+                return
+                
+            # 更新任务状态
             task.status = status
-        
-        # 如果任务已完成或失败，记录完成时间
+            
+            # 如果任务已完成或失败，记录完成时间
             if status in ['completed', 'failed']:
                 task.completed_at = datetime.utcnow()
-            
-        # 更新结果路径和错误信息（如果提供）
+                
+            # 更新结果路径和错误信息（如果提供）
             if result_path:
                 task.result_path = result_path
             if error_message:
                 task.error_message = error_message
-            
-        # 保存更改
-        try:
+                
+            # 保存更改
             db.session.commit()
             print(f"任务 {task_id} 状态已更新为 {status}")
+            
+            # 通知前端任务状态已更新
+            user_id = task.user_id
+            if user_id in task_update_listeners:
+                update_info = {
+                    'type': 'task_update',
+                    'task_id': task_id,
+                    'status': status,
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+                
+                # 向该用户的所有连接发送更新
+                for listener_id in list(task_update_listeners[user_id].keys()):
+                    task_update_listeners[user_id][listener_id].append(update_info)
+                    
         except Exception as e:
-            db.session.rollback()
             print(f"更新任务状态时出错: {e}")
+            try:
+                db.session.rollback()
+            except:
+                pass
 
 # 获取配置模板
 @app.route('/api/config_template/<template_name>', methods=['GET'])
@@ -851,6 +971,21 @@ def get_research_result(task_id):
         with open(task.result_path, 'r', encoding='utf-8') as f:
             report_text = f.read()
             
+        # 返回包含翻译信息的结果
+        response_data = {
+            'task_id': task_id,
+            'report': report_text,
+            'language': task.report_language,
+            'is_translated': task.is_translated
+        }
+        
+        # 如果是已翻译报告且保存了原始报告路径，则提供原始英文报告
+        if task.is_translated and task.original_report_path and os.path.exists(task.original_report_path):
+            with open(task.original_report_path, 'r', encoding='utf-8') as f:
+                original_report = f.read()
+            response_data['original_report'] = original_report
+            response_data['original_report_path'] = task.original_report_path
+            
         # 获取生成的图像文件
         research_dir = os.path.dirname(task.result_path)
         image_files = []
@@ -865,14 +1000,16 @@ def get_research_result(task_id):
                         'url': image_url
                     })
         
-        return jsonify({
-            'task_id': task_id,
-            'report': report_text,
-            'images': image_files,
-            'pdf_url': url_for('research_file', file_path=os.path.relpath(os.path.join(research_dir, 'tex/temp.pdf'), 
-                                                        start=app.config['USER_DATA_FOLDER']), 
-                               _external=True) if os.path.exists(os.path.join(research_dir, 'tex/temp.pdf')) else None
-        })
+        response_data['images'] = image_files
+        
+        # 添加PDF下载链接
+        pdf_path = os.path.join(research_dir, 'tex/temp.pdf')
+        if os.path.exists(pdf_path):
+            response_data['pdf_url'] = url_for('research_file', 
+                                               file_path=os.path.relpath(pdf_path, start=app.config['USER_DATA_FOLDER']), 
+                                               _external=True)
+        
+        return jsonify(response_data)
     except Exception as e:
         return jsonify({'error': f'Error retrieving research results: {str(e)}'}), 500
 
@@ -920,7 +1057,6 @@ def cleanup_old_tasks():
             try:
                 if task.result_path and os.path.exists(task.result_path):
                     research_dir = os.path.dirname(task.result_path)
-                    import shutil
                     shutil.rmtree(research_dir, ignore_errors=True)
                 
                 if task.config_path and os.path.exists(task.config_path):
@@ -997,7 +1133,7 @@ def check_port_unix(port):
         # 命令执行失败，可能是端口未被占用
         pass
 
-# 在应用启动时设置定时任务（生产环境中应使用celery或类似工具）
+# 在应用启动时设置定期清理任务（生产环境中应使用celery或类似工具）
 def run_app(port=5000, config_file=None):
     global model
     
@@ -1051,23 +1187,21 @@ def load_config_from_yaml(config_file):
         with open(config_file, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             
-        # 设置全局默认配置
-        default_configs = {
-            'DEFAULT_LLM_BACKBONE': ('llm-backend', "o4-mini-yunwu"),
-            'DEFAULT_LANGUAGE': ('language', 'English'),
+        # 应用配置中的默认值
+        app.config.update({
+            'DEFAULT_LLM_BACKEND': config.get('llm-backend', 'o4-mini-yunwu'),
             'DEFAULT_NUM_PAPERS_LIT_REVIEW': ('num-papers-lit-review', 5),
-            'DEFAULT_MLESOLVER_MAX_STEPS': ('mlesolver-max-steps', 3),
-            'DEFAULT_PAPERSOLVER_MAX_STEPS': ('papersolver-max-steps', 5),
-            'DEFAULT_COMPILE_LATEX': ('compile-latex', True),
-            'DEFAULT_COPILOT_MODE': ('copilot-mode', False),
-            'DEFAULT_AGENTRXIV': ('agentRxiv', False),
             'DEFAULT_AGENTRXIV_PAPERS': ('agentrxiv-papers', 5),
-            'DEFAULT_LAB_INDEX': ('lab-index', 0)
-        }
-        
-        # 应用配置
-        for app_key, (config_key, default_value) in default_configs.items():
-            app.config[app_key] = config.get(config_key, default_value)
+            'DEFAULT_COMPILE_LATEX': ('compile-latex', True),
+            'DEFAULT_MLESOLVER_MAX_STEPS': ('mlesolver-max-steps', 3),
+            'DEFAULT_DATASOLVER_MAX_STEPS': ('datasolver-max-steps', 3),
+            'DEFAULT_PAPERSOLVER_MAX_STEPS': ('papersolver-max-steps', 5),
+            'DEFAULT_LAB_INDEX': ('lab-index', 0),
+            'DEFAULT_COPILOT_MODE': config.get('copilot-mode', False),
+            'DEFAULT_AGENTRXIV': config.get('agentRxiv', False),
+            'DEFAULT_LLM_BACKBONE': DEFAULT_LLM_BACKBONE,
+            'DEFAULT_TASK_NOTES': config.get('task-notes', {})
+        })
             
         # 设置API密钥
         api_keys = {
@@ -1288,6 +1422,338 @@ def continue_research_task(task_id, user_id, state_path, phase):
         error_msg = f"继续研究任务时出错: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         update_task_status(task_id, 'failed', error_message=error_msg)
+
+# 翻译研究报告
+@app.route('/api/translate_report/<task_id>', methods=['POST'])
+def translate_report(task_id):
+    """将英文研究报告翻译为指定语言（默认中文）"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': '用户会话未找到'}), 401
+        
+    # 检查任务是否属于当前用户
+    task = ResearchTask.query.get(task_id)
+    if not task or task.user_id != user_id:
+        return jsonify({'error': '任务未找到'}), 404
+    
+    # 只能翻译已完成的任务
+    if task.status != 'completed':
+        return jsonify({'error': '只能翻译已完成的研究报告'}), 400
+    
+    # 获取请求数据
+    data = request.get_json() or {}
+    target_language = data.get('language', '中文')
+    
+    # 启动翻译线程
+    thread = threading.Thread(
+        target=run_translation_task,
+        args=(task_id, user_id, target_language)
+    )
+    thread.daemon = True
+    thread.start()
+    
+    # 更新任务状态
+    task.report_language = target_language
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': f'开始将报告翻译为{target_language}',
+        'task_id': task_id
+    })
+
+# 翻译任务处理函数
+def run_translation_task(task_id, user_id, target_language):
+    """执行报告翻译任务"""
+    if not AI_LAB_AVAILABLE:
+        update_task_status(task_id, 'failed', error_message="AI实验室模块不可用")
+        return
+    
+    # 在函数开始时创建应用上下文
+    with app.app_context():
+        try:
+            # 获取任务信息
+            task = ResearchTask.query.get(task_id)
+            if not task:
+                print(f"警告: 找不到任务ID {task_id}")
+                return
+                
+            # 保存原始英文报告路径
+            original_report_path = task.result_path
+            task.original_report_path = original_report_path
+            
+            # 创建翻译结果路径
+            research_dir = os.path.dirname(task.result_path)
+            translated_report_path = os.path.join(research_dir, f"report_{target_language}.txt")
+            
+            # 读取原始报告
+            with open(original_report_path, 'r', encoding='utf-8') as f:
+                original_report = f.read()
+            
+            # 更新状态为正在处理翻译
+            update_task_status(task_id, 'translating', error_message=f"正在将报告翻译为{target_language}")
+            
+            # 调用翻译函数
+            translation_success = translate_report_content(task_id, original_report, translated_report_path, target_language)
+            
+            # 更新任务信息
+            task = ResearchTask.query.get(task_id)
+            if task:
+                if translation_success:
+                    # 翻译成功，使用翻译后的报告路径
+                    task.result_path = translated_report_path
+                    task.is_translated = True
+                else:
+                    # 翻译失败，保留原始英文报告路径
+                    # 但仍然标记为已尝试翻译，这样前端可以显示适当的消息
+                    task.result_path = original_report_path
+                    task.is_translated = False
+                
+                task.status = 'completed'
+                db.session.commit()
+                print(f"任务 {task_id} 的报告处理完成，翻译状态: {translation_success}")
+                    
+                # 通知前端翻译完成
+                user_id = task.user_id
+                if user_id in task_update_listeners:
+                    update_info = {
+                        'type': 'task_update',
+                        'task_id': task_id,
+                        'status': 'completed',
+                        'is_translated': translation_success,
+                        'language': target_language if translation_success else 'English',
+                        'updated_at': datetime.utcnow().isoformat()
+                    }
+                    
+                    # 向该用户的所有连接发送更新
+                    for listener_id in list(task_update_listeners[user_id].keys()):
+                        task_update_listeners[user_id][listener_id].append(update_info)
+        
+        except Exception as e:
+            import traceback
+            error_msg = f"翻译任务执行错误: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            
+            # 确保在任何情况下都能恢复到原始英文报告
+            try:
+                task = ResearchTask.query.get(task_id)
+                if task and task.original_report_path:
+                    # 翻译失败，恢复使用原始英文报告
+                    task.result_path = task.original_report_path
+                    task.is_translated = False
+                    task.status = 'completed'  # 仍然标记为完成，因为研究本身已完成
+                    db.session.commit()
+                    print(f"任务 {task_id} 翻译失败，已恢复使用原始英文报告")
+            except Exception as inner_e:
+                print(f"恢复原始报告时出错: {inner_e}")
+                
+            update_task_status(task_id, 'completed', error_message=f"翻译失败: {str(e)}，使用原始英文报告")
+
+def update_task_status(task_id, status, result_path=None, error_message=None):
+    """
+    更新研究任务的状态
+    
+    参数:
+        task_id (str): 任务ID
+        status (str): 任务状态 (pending, running, completed, failed, translating)
+        result_path (str, optional): 结果文件路径
+        error_message (str, optional): 错误信息
+    """
+    # 创建应用上下文
+    with app.app_context():
+        try:
+            task = ResearchTask.query.get(task_id)
+            if not task:
+                print(f"警告: 找不到任务ID {task_id}")
+                return
+                
+            # 更新任务状态
+            task.status = status
+            
+            # 如果任务已完成或失败，记录完成时间
+            if status in ['completed', 'failed']:
+                task.completed_at = datetime.utcnow()
+                
+            # 更新结果路径和错误信息（如果提供）
+            if result_path:
+                task.result_path = result_path
+            if error_message:
+                task.error_message = error_message
+                
+            # 保存更改
+            db.session.commit()
+            print(f"任务 {task_id} 状态已更新为 {status}")
+            
+            # 通知前端任务状态已更新
+            user_id = task.user_id
+            if user_id in task_update_listeners:
+                update_info = {
+                    'type': 'task_update',
+                    'task_id': task_id,
+                    'status': status,
+                    'updated_at': datetime.utcnow().isoformat()
+                }
+                
+                # 向该用户的所有连接发送更新
+                for listener_id in list(task_update_listeners[user_id].keys()):
+                    task_update_listeners[user_id][listener_id].append(update_info)
+                    
+        except Exception as e:
+            print(f"更新任务状态时出错: {e}")
+            try:
+                db.session.rollback()
+            except:
+                pass
+
+def translate_report_content(task_id, original_report, output_path, target_language='中文'):
+    """
+    翻译报告内容
+    
+    参数:
+        task_id (str): 任务ID
+        original_report (str): 原始报告内容
+        output_path (str): 输出文件路径
+        target_language (str): 目标语言
+        
+    返回:
+        bool: 翻译是否成功
+    """
+    try:
+        # 使用API获取OpenAI密钥
+        with app.app_context():
+            task = ResearchTask.query.get(task_id)
+            if not task or not task.config_path:
+                raise Exception("任务配置不可用")
+                
+            # 加载配置
+            with open(task.config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                
+            # 获取API密钥
+            api_key = config.get('api-key')
+            if not api_key or api_key == 'OPENAI-API-KEY-HERE':
+                api_key = os.environ.get('OPENAI_API_KEY')
+                
+            if not api_key:
+                raise Exception("OpenAI API密钥不可用")
+            
+        # 延迟导入OpenAI，避免全局依赖
+        import openai
+        openai.api_key = api_key
+        
+        # 根据不同语言添加特定的翻译指导
+        language_guides = {
+            '中文': {
+                'system': "你是一个精通中英文的学术翻译专家，擅长将英文学术研究报告翻译成地道的中文。请保持学术术语的准确性，同时确保译文流畅自然。",
+                'user_prefix': "请将以下英文学术研究报告翻译成中文，保持术语准确、结构清晰。如果有LaTeX或Markdown格式，请保留原格式。\n\n",
+                'latex_packages': "\\usepackage{xeCJK}\n\\setCJKmainfont{SimSun}"
+            },
+            '日本語': {
+                'system': "あなたは英語と日本語に精通した学術翻訳の専門家であり、英語の学術研究レポートを自然な日本語に翻訳するのが得意です。学術用語の正確さを保ちながら、訳文が流暢で自然であることを確保してください。",
+                'user_prefix': "以下の英語の学術研究レポートを日本語に翻訳してください。専門用語の正確さと構造の明瞭さを保ってください。LaTeXやMarkdown形式があれば、元の形式を保持してください。\n\n",
+                'latex_packages': "\\usepackage{xeCJK}\n\\setCJKmainfont{IPAMincho}"
+            }
+        }
+        
+        # 获取当前语言的指南
+        guide = language_guides.get(target_language, {
+            'system': f"你是一个精通英语和{target_language}的学术翻译专家。请将英文学术报告翻译成{target_language}。",
+            'user_prefix': f"请将以下英文学术研究报告翻译成{target_language}，保持术语准确、结构清晰。\n\n",
+            'latex_packages': ""
+        })
+        
+        # 分批处理，避免超出token限制
+        max_chunk_size = 3000  # 每批约3000字
+        chunks = [original_report[i:i+max_chunk_size] for i in range(0, len(original_report), max_chunk_size)]
+        
+        translated_chunks = []
+        
+        for i, chunk in enumerate(chunks):
+            print(f"翻译第 {i+1}/{len(chunks)} 部分...")
+            
+            # 调用OpenAI API进行翻译
+            response = openai.chat.completions.create(
+                model="gpt-4-turbo",  # 使用最新模型
+                messages=[
+                    {"role": "system", "content": guide['system']},
+                    {"role": "user", "content": f"{guide['user_prefix']}{chunk}"}
+                ],
+                temperature=0.2,  # 低温度，提高一致性
+                max_tokens=4000
+            )
+            
+            translation = response.choices[0].message.content.strip()
+            translated_chunks.append(translation)
+        
+        # 合并翻译结果
+        full_translation = '\n'.join(translated_chunks)
+        
+        # 处理LaTeX文件（如果存在）
+        research_dir = os.path.dirname(output_path)
+        tex_dir = os.path.join(research_dir, "tex")
+        
+        if os.path.exists(tex_dir):
+            # 查找主LaTeX文件
+            main_tex_file = None
+            for file in os.listdir(tex_dir):
+                if file.endswith('.tex'):
+                    main_tex_file = os.path.join(tex_dir, file)
+                    break
+            
+            if main_tex_file:
+                # 备份原始TeX文件
+                backup_file = main_tex_file + ".bak"
+                shutil.copy2(main_tex_file, backup_file)
+                
+                try:
+                    # 读取LaTeX文件
+                    with open(main_tex_file, 'r', encoding='utf-8') as f:
+                        tex_content = f.read()
+                    
+                    # 添加CJK支持（对中文和日文）
+                    if '\\documentclass' in tex_content and guide['latex_packages']:
+                        modified_tex = tex_content.replace(
+                            '\\documentclass',
+                            f'\\documentclass'
+                        )
+                        
+                        # 在导言区添加CJK包
+                        if '\\begin{document}' in modified_tex:
+                            modified_tex = modified_tex.replace(
+                                '\\begin{document}',
+                                f"{guide['latex_packages']}\n\\begin{document}"
+                            )
+                            
+                            # 写回文件
+                            with open(main_tex_file, 'w', encoding='utf-8') as f:
+                                f.write(modified_tex)
+                except Exception as e:
+                    print(f"处理LaTeX文件时出错: {e}")
+                    # 还原备份
+                    if os.path.exists(backup_file):
+                        shutil.copy2(backup_file, main_tex_file)
+        
+        # 写入翻译结果
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(full_translation)
+            
+        print(f"翻译完成，结果已保存到: {output_path}")
+        return True
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"翻译过程中出错: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        
+        try:
+            # 将错误信息和原始报告内容写入输出文件
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(f"翻译失败: {str(e)}\n\n原始报告内容:\n\n{original_report}")
+            print(f"已将原始报告内容保存到: {output_path}")
+        except Exception as write_error:
+            print(f"写入输出文件时出错: {write_error}")
+            
+        return False
 
 if __name__ == '__main__':
     # 添加命令行参数解析，整合ai_lab_repo.py的逻辑

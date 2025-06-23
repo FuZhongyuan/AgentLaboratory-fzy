@@ -508,20 +508,6 @@ os.environ['HF_HOME'] = os.path.join(os.getcwd(), '.cache/huggingface')
 os.environ['TORCH_HOME'] = os.path.join(os.getcwd(), '.cache/torch')
 os.environ['XDG_CACHE_HOME'] = os.path.join(os.getcwd(), '.cache')
 
-# 如果需要下载数据集，确保在用户目录中
-try:
-    import datasets
-    _original_download_and_prepare = datasets.builder.DatasetBuilder._download_and_prepare
-    
-    def _custom_download_and_prepare(self, *args, **kwargs):
-        print(f"将数据集下载到当前工作目录: {os.getcwd()}")
-        return _original_download_and_prepare(self, *args, **kwargs)
-    
-    datasets.builder.DatasetBuilder._download_and_prepare = _custom_download_and_prepare
-except:
-    print("无法重定向datasets库的下载路径，可能需要手动处理")
-
-
 """
             code_str = matplotlib_config + code_str
         

@@ -313,7 +313,9 @@ class MLESolver:
             model_resp = self.clean_text(model_resp)
             self.code_lines = copy(random.choice(self.best_codes)[0])
             cmd_str, code_lines, prev_code_ret, should_execute_code, score = self.process_command(model_resp)
-            self.st_history.append([model_resp, prev_code_ret, code_lines, cmd_str])
+            feedback_res = self.feedback(prev_code_ret)
+            # Update history with feedback
+            self.st_history.append([model_resp, prev_code_ret, feedback_res, code_lines, cmd_str])
             if len(self.st_history) > self.st_hist_len: self.st_history.pop(0)
             if score is not None:
                 if top_score is None:

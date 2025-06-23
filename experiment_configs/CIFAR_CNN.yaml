@@ -27,8 +27,9 @@ parallel-labs: False
 
 # 实验流程控制参数
 mlesolver-max-steps: 3
-papersolver-max-steps: 2
-lab-index: 1
+datasolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
 load-existing: False
 # load-existing-path: "state_saves/Paper0.pkl"
 except-if-fail: False
@@ -44,7 +45,7 @@ task-notes:
 
   plan-formulation:
     - '撰写综述论文的核心目标是分析五种CNN结构在图像分类中的发展与性能对比。'
-    - '围绕“残差连接机制”“特征复用”“通道注意力”“多尺度表示”四大维度展开对比分析。'
+    - '围绕"残差连接机制""特征复用""通道注意力""多尺度表示"四大维度展开对比分析。'
     - '规划论文逻辑结构：从引言、模型结构对比、性能表现综述，到机制层面深入分析与未来展望。'
 
   data-preparation:

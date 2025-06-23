@@ -8,7 +8,7 @@ research-topic: "Your goal is to design reasoning and prompt engineering techniq
 api-key: "OPENAI-API-KEY-HERE"
 # or deepseek-api-key: "DEEPSEEK-API-KEY-HERE"
 # Agent Laboratory backend
-llm-backend: "o3-mini"
+llm-backend: o4-mini-yunwu
 # Literature review backend
 lit-review-backend: "o3-mini"
 
@@ -24,16 +24,18 @@ parallel-labs: False
 
 # Total mle-solver steps per lab
 mlesolver-max-steps: 3
+# Total datasolver steps per lab
+datasolver-max-steps: 3
 # Total paper-solver steps per lab
-papersolver-max-steps: 1
+papersolver-max-steps: 5
 # The lab index for this lab (used for parallel runs)
-lab-index: 1
+lab-index: 0
 # If you want to load an existing save
 load-existing: False
 # If fail, run exception?
 except-if-fail: False
 # Compile latex into PDFs during paper-solver
-compile-latex: False
+compile-latex: true
 
 # Task notes
 task-notes:

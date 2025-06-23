@@ -1,0 +1,82 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：CNN结构综述与CIFAR10分类实验分析
+research-topic: "RNN结构综述与实验对比分析"
+research-dir-path: "RNN_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "中文"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: true  # 自动编译LaTeX生成PDF
+datasolver-max-steps: 3
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+  - '调研注意力机制的基本原理，理解其在序列建模中的应用背景与发展历程。'
+  - '综述Seq2Seq模型的发展，从传统RNN结构到引入注意力机制的改进方法（如Bahdanau Attention、Luong Attention等）。'
+  - '查阅相关论文和PyTorch官方文档，理解注意力层的实现方式及其在翻译任务中的效果提升。'
+  - '可引用并展示模型结构图（如Encoder-Decoder架构对比图、注意力可视化热图等）以辅助说明机制变化。'
+
+  plan-formulation:
+  - '本实验的核心目标是基于PyTorch实现带有注意力机制的Seq2Seq翻译模型，并与纯RNN结构进行对比分析。'
+  - '实验将分为两个阶段：第一阶段实现基本的RNN Seq2Seq翻译模型，第二阶段引入注意力机制进行性能改进。'
+  - '对比模型结构、训练损失趋势、BLEU分数和翻译质量等多个维度，分析注意力机制的实际影响。'
+  - '重点关注注意力机制对长序列翻译效果的提升与训练收敛速度的影响。'
+
+  data-preparation:
+  - '使用英法（或英德）翻译小语料数据集，用于训练和评估模型性能。'
+  - '将数据进行分词、词表构建、序列索引化与padding操作，并划分训练集与验证集。'
+  - '提供样例数据格式说明，并可视化输入与目标输出对齐情况（用于注意力机制验证）。'
+
+  running-experiments:
+  - '分别运行基本RNN Seq2Seq模型与加入注意力机制的改进模型，记录训练损失与验证表现。'
+  - '分析不同模型结构在相同训练条件下的收敛速度、翻译效果与泛化能力。'
+  - '通过Attention权重矩阵可视化观察模型在翻译过程中关注的上下文信息位置。'
+  - '对比典型句子的翻译结果，分析注意力机制在语义对齐上的表现。'
+
+  results-interpretation:
+  - '展示两种模型的训练损失曲线与BLEU分数变化图，分析性能提升的量化效果。'
+  - '重点分析注意力机制对长距离依赖建模的影响，说明其在解码阶段的信息提取优势。'
+  - '结合注意力权重热图，解释模型在翻译过程中对源语言位置的动态关注情况。'
+  - '总结加入注意力机制后模型在翻译质量与可解释性方面的提升，并指出可能存在的训练成本增加问题。'
+
+  report-writing:
+  - '撰写实验报告，内容包括：'
+  - '- 实验背景与目的（简述Seq2Seq与注意力机制）'
+  - '- 模型结构设计与对比（含结构图）'
+  - '- 实验过程与参数设置'
+  - '- 实验结果对比分析（附表格与图示）'
+  - '- 实验心得与总结（强调注意力机制的影响）'
+  - '使用Latex撰写，图表应完整配注，确保逻辑清晰，结构合理。'
+
+  report-refinement:
+  - '对实验报告进行语言润色、图文校对与结果重述，确保表达严谨。'
+  - '对比分析部分突出实验现象与原理联系，避免仅列出结果不作解释。'
+  - '引用相关文献或文档作为技术支撑，附上参考资料列表。'
+  - '根据实验要求重点完善“实验心得”部分，详细阐述注意力机制带来的性能影响与个人理解。'
