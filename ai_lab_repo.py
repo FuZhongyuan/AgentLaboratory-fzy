@@ -117,6 +117,8 @@ class LaboratoryWorkflow:
         @param phase: (str) phase string
         @return: None
         """
+        print(f"为了节约资源，跳过状态保存")
+        return
         state_file = None
         
         # 使用用户特定的目录（lab_dir）来保存状态
