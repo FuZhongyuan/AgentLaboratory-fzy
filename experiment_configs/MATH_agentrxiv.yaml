@@ -7,7 +7,7 @@ research-topic: "Your goal is to design reasoning and prompt engineering techniq
 # Here you can put your OpenAI API key--if you don't have one or OpenAI doesn't work for you, you can also instead use `deepseek-api-key`
 api-key: "OPENAI-API-KEY-HERE"
 # or deepseek-api-key: "DEEPSEEK-API-KEY-HERE"
-# Agent Laboratory backend
+# fzy Agent backend
 llm-backend: "o3-mini"
 # Literature review backend
 lit-review-backend: "o3-mini"

@@ -1,4 +1,4 @@
-# Agent Laboratory: 使用大型语言模型代理作为研究助理
+# fzy Agent: 使用大型语言模型代理作为研究助理
 
 <p align="center">
   <img src="../media/AgentLabLogo.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
@@ -14,16 +14,16 @@
 
 ## 📖 概述
 
-- **Agent Laboratory** 是一个端到端的自主研究工作流程，旨在协助**您**作为人类研究人员**实现您的研究想法**。Agent Laboratory 由由大型语言模型驱动的专业代理组成，支持您完成整个研究工作流程——从进行文献综述和制定计划，到执行实验和撰写综合报告。
-- 该系统并非旨在取代您的创造力，而是为了补充它，使您能够专注于创意和批判性思维，同时自动化重复且耗时的任务，如编码和文档编写。通过适应不同水平的计算资源和人类参与，Agent Laboratory 旨在加速科学发现并优化您的研究生产力。
+- **fzy Agent** 是一个端到端的自主研究工作流程，旨在协助**您**作为人类研究人员**实现您的研究想法**。fzy Agent 由由大型语言模型驱动的专业代理组成，支持您完成整个研究工作流程——从进行文献综述和制定计划，到执行实验和撰写综合报告。
+- 该系统并非旨在取代您的创造力，而是为了补充它，使您能够专注于创意和批判性思维，同时自动化重复且耗时的任务，如编码和文档编写。通过适应不同水平的计算资源和人类参与，fzy Agent 旨在加速科学发现并优化您的研究生产力。
 
 <p align="center">
   <img src="../media/AgentLab.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
 </p>
 
-### 🔬 Agent Laboratory 如何工作？
+### 🔬 fzy Agent 如何工作？
 
-- Agent Laboratory 包含三个主要阶段，系统地引导研究过程：（1）文献综述，（2）实验，（3）报告撰写。在每个阶段，由大型语言模型驱动的专业代理协作完成不同的目标，整合了如 arXiv、Hugging Face、Python 和 LaTeX 等外部工具以优化结果。这一结构化的工作流程始于独立收集和分析相关研究论文，经过协作计划和数据准备，最终实现自动化实验和综合报告生成。论文中讨论了具体代理角色及其在这些阶段的贡献。
+- fzy Agent 包含三个主要阶段，系统地引导研究过程：（1）文献综述，（2）实验，（3）报告撰写。在每个阶段，由大型语言模型驱动的专业代理协作完成不同的目标，整合了如 arXiv、Hugging Face、Python 和 LaTeX 等外部工具以优化结果。这一结构化的工作流程始于独立收集和分析相关研究论文，经过协作计划和数据准备，最终实现自动化实验和综合报告生成。论文中讨论了具体代理角色及其在这些阶段的贡献。
 
 <p align="center">
   <img src="../media/AgentLabWF.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
@@ -60,7 +60,7 @@
     - 这使得代理能够编译 latex 源代码。
     - **[重要]** 如果由于没有 sudo 权限而无法运行此步骤，可以通过将 `--compile_latex` 标志设置为 false 来关闭 pdf 编译：`--compile_latex=False`
 
-5. **现在运行 Agent Laboratory！**
+5. **现在运行 fzy Agent！**
     
     `python ai_lab_repo.py --api-key "API_KEY_HERE" --llm-backend "o1-mini" --research-topic "YOUR RESEARCH IDEA"`
     
@@ -127,7 +127,7 @@ task_notes_LLM = [
 
 #### [技巧 #4] 🈯 如果您使用非英语语言运行 🈲
 
-如果您使用非英语语言运行 Agent Laboratory，没问题，只需确保向代理提供一个语言标志，以便用您喜欢的语言进行研究。请注意，我们尚未广泛研究使用其他语言运行 Agent Laboratory，因此请务必报告您遇到的任何问题。
+如果您使用非英语语言运行 fzy Agent，没问题，只需确保向代理提供一个语言标志，以便用您喜欢的语言进行研究。请注意，我们尚未广泛研究使用其他语言运行 fzy Agent，因此请务必报告您遇到的任何问题。
 
 例如，如果您使用中文运行：
 
@@ -143,7 +143,7 @@ task_notes_LLM = [
 
 ```bibtex
 @preprint{schmidgall2025AgentLaboratory,
-  title={Agent Laboratory: Using LLM Agents as Research Assistants},
+  title={fzy Agent: Using LLM Agents as Research Assistants},
   author={Schmidgall, Samuel and Su, Yusheng and Wang, Ze and Sun, Ximeng and Wu, Jialian and Yu, Xiadong and Liu, Jiang, Liu, Zicheng and Barsoum, Emad},
   year={2025}
 }

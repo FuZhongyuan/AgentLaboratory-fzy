@@ -1,5 +1,5 @@
 /**
- * AI实验室前端交互脚本
+ * fzy实验室前端交互脚本
  */
 
 document.addEventListener('DOMContentLoaded', function() {
