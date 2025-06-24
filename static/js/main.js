@@ -305,9 +305,6 @@ function updateTaskUI(update) {
                     case 'paused':
                         statusBadgeClass += 'badge-paused';
                         break;
-                    case 'translating':
-                        statusBadgeClass += 'badge-translating';
-                        break;
                     default:
                         statusBadgeClass += 'bg-secondary';
                 }
@@ -319,7 +316,6 @@ function updateTaskUI(update) {
                     'completed': '已完成',
                     'failed': '失败',
                     'paused': '已暂停',
-                    'translating': '翻译中'
                 }[update.status] || update.status;
                 
                 // 更新状态单元格
@@ -378,23 +374,11 @@ function updateTaskUI(update) {
         }
     }
     
-    // 显示适当的通知
+    // 显示适当的通知（翻译提示已移除）
     if (update.status === 'completed') {
         showAlert(`任务已完成！`, 'success');
     } else if (update.status === 'failed') {
         showAlert(`任务执行失败`, 'danger');
-    }
-    
-    // 如果任务正在查看中且已完成翻译，自动刷新结果查看
-    const resultModal = document.getElementById('resultModal');
-    if (resultModal && resultModal.classList.contains('show') && 
-        update.status === 'completed' && update.is_translated) {
-        
-        // 重新加载任务结果
-        viewTaskResult(update.task_id);
-        
-        // 显示翻译完成通知
-        showAlert(`报告已翻译为${update.language}！`, 'success');
     }
 }
 
@@ -718,9 +702,6 @@ function loadTasks() {
                         case 'paused':
                             statusBadgeClass += 'badge-paused';
                             break;
-                        case 'translating':
-                            statusBadgeClass += 'badge-translating';
-                            break;
                         default:
                             statusBadgeClass += 'bg-secondary';
                     }
@@ -732,7 +713,6 @@ function loadTasks() {
                         'completed': '已完成',
                         'failed': '失败',
                         'paused': '已暂停',
-                        'translating': '翻译中'
                     }[task.status] || task.status;
                     
                     // 构建操作按钮
@@ -918,84 +898,16 @@ function viewTaskResult(taskId) {
                 downloadPdfBtn.classList.add('d-none');
             }
             
-            // 检查报告是否已翻译及其语言
-            let translateButtonHtml = '';
-            if (data.original_report_path && data.language && data.language !== 'English') {
-                // 已翻译报告
-                translateButtonHtml = `
-                    <div class="translate-controls mb-3">
-                        <div class="btn-group" role="group" aria-label="切换报告语言">
-                            <button type="button" class="btn btn-outline-secondary switch-language" data-language="original">查看英文原文</button>
-                            <button type="button" class="btn btn-primary switch-language active" data-language="translated">查看${data.language}译文</button>
-                        </div>
-                    </div>
-                `;
-
-                // 添加原始英文报告（隐藏）
-                if (data.original_report) {
-                    const originalReportHtml = marked.parse(data.original_report || '');
-                    translateButtonHtml += `
-                        <div id="original-report" class="d-none">
-                            <div class="research-report mb-4">
-                                <h2>研究报告（英文原文）</h2>
-                                <div class="report-content">
-                                    ${originalReportHtml}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            } else if (!data.is_translated && data.language && data.language !== 'English') {
-                // 未翻译报告，但需要翻译
-                translateButtonHtml = `
-                    <div class="translate-controls mb-3">
-                        <button type="button" class="btn btn-info translate-report" data-task-id="${taskId}" data-language="${data.language}">
-                            翻译为${data.language}
-                        </button>
-                        <small class="text-muted ms-2">当前显示英文原文</small>
-                    </div>
-                `;
-            }
-            
-            // 更新结果内容
+            // 更新结果内容（移除翻译相关 UI）
             resultContent.innerHTML = `
-                ${translateButtonHtml}
-                <div id="translated-report">
-                    <div class="research-report mb-4">
-                        <h2>研究报告${data.is_translated ? ` (${data.language})` : ''}</h2>
-                        <div class="report-content">
-                            ${reportHtml}
-                        </div>
+                <div class="research-report mb-4">
+                    <h2>研究报告</h2>
+                    <div class="report-content">
+                        ${reportHtml}
                     </div>
                 </div>
                 ${imagesHtml}
             `;
-            
-            // 绑定语言切换事件
-            document.querySelectorAll('.switch-language').forEach(button => {
-                button.addEventListener('click', function() {
-                    const language = this.getAttribute('data-language');
-                    document.querySelectorAll('.switch-language').forEach(btn => btn.classList.remove('active', 'btn-primary'));
-                    this.classList.add('active', 'btn-primary');
-                    
-                    if (language === 'original') {
-                        document.getElementById('translated-report').classList.add('d-none');
-                        document.getElementById('original-report').classList.remove('d-none');
-                    } else {
-                        document.getElementById('original-report').classList.add('d-none');
-                        document.getElementById('translated-report').classList.remove('d-none');
-                    }
-                });
-            });
-            
-            // 绑定翻译按钮事件
-            document.querySelectorAll('.translate-report').forEach(button => {
-                button.addEventListener('click', function() {
-                    const taskId = this.getAttribute('data-task-id');
-                    const language = this.getAttribute('data-language');
-                    translateReport(taskId, language);
-                });
-            });
         })
         .catch(error => {
             console.error('Error viewing result:', error);
@@ -1006,66 +918,6 @@ function viewTaskResult(taskId) {
                 </div>
             `;
         });
-}
-
-/**
- * 翻译研究报告
- * @param {string} taskId - 任务ID
- * @param {string} language - 目标语言
- */
-function translateReport(taskId, language) {
-    // 获取翻译按钮并显示加载状态
-    const translateBtn = document.querySelector(`.translate-report[data-task-id="${taskId}"]`);
-    if (translateBtn) {
-        translateBtn.disabled = true;
-        translateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> 翻译中...';
-    }
-    
-    // 调用翻译API
-    fetch(`/api/translate_report/${taskId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            language: language
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('翻译请求失败');
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (translateBtn) {
-            translateBtn.innerHTML = `<i class="bi bi-check-circle"></i> 翻译请求已提交`;
-            
-            // 添加提示
-            const translateControls = translateBtn.closest('.translate-controls');
-            if (translateControls) {
-                const statusText = document.createElement('div');
-                statusText.className = 'alert alert-info mt-2';
-                statusText.innerHTML = `
-                    <p><i class="bi bi-info-circle"></i> 翻译已开始处理，这可能需要几分钟时间。</p>
-                    <p>翻译完成后，页面将自动刷新显示翻译结果。</p>
-                `;
-                translateControls.appendChild(statusText);
-            }
-        }
-        
-        showAlert('翻译请求已提交，正在处理中...', 'info');
-    })
-    .catch(error => {
-        console.error('Error translating report:', error);
-        showAlert('翻译请求失败: ' + error.message, 'danger');
-        
-        // 恢复按钮状态
-        if (translateBtn) {
-            translateBtn.disabled = false;
-            translateBtn.innerHTML = `翻译为${language}`;
-        }
-    });
 }
 
 /**

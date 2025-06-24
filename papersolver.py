@@ -265,6 +265,7 @@ class PaperSolver:
         self.prev_paper_ret = str()
         self.section_related_work = {}
         self.openai_api_key = openai_api_key
+        self.max_attempts = 30  # 默认最多尝试 30 轮
 
     def solve(self):
         num_attempts = 0
@@ -292,6 +293,11 @@ class PaperSolver:
             if not self.supress_print: print(f"@@@ Command Exec // Attempt {num_attempts}: ", str(cmd_str).replace("\n", " | "))
             if not self.supress_print: print(f"$$$ Score: {score}")
             num_attempts += 1
+            # 安全阀：达到上限即退出
+            if num_attempts >= self.max_attempts:
+                if not self.supress_print:
+                    print(f"*** 达到最大尝试次数 {self.max_attempts}，自动终止 ***")
+                break
         self.paper_lines, self.prev_paper_ret, model_resp, cmd_str = best_pkg
         # add top scoring paper that was successful to the best papers
         if top_score > self.best_report[-1][1]:

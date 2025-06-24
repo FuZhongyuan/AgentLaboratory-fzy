@@ -104,7 +104,7 @@ class Replace(Command):
             
         # Pass lab_dir parameter to execute_code
         code_ret = execute_code(code_exec, lab_dir=lab_dir)
-        if "[CODE EXECUTION ERROR]" in code_ret: 
+        if "[CODE EXECUTION ERROR]" in code_ret['output']: 
             return False, (None, code_ret,)
         return True, (new_code.split("\n"), code_ret)
 
@@ -160,9 +160,9 @@ class Edit(Command):
             # Pass lab_dir parameter to execute_code
             code_ret = execute_code(code_exec, lab_dir=lab_dir)
             
-            if "CODE EXECUTION ERROR" in code_ret: 
-                return (False, None, code_ret)
-            return (True, current_code, code_ret)
+            if "[CODE EXECUTION ERROR]" in code_ret['output']: 
+                return (False, None, code_ret['output'])
+            return (True, current_code, code_ret['output'])
         except Exception as e:
             return (False, None, str(e))
 
@@ -193,7 +193,7 @@ class Edit(Command):
             if len(args) > 3:
                 lab_dir = args[3]
                 
-            return True, (n, m, args[1].split("\n"), new_lines, args[2], lab_dir)
+            return True, (n, m, args[1], new_lines, args[2], lab_dir)
         except Exception as e:
             return False, str(e)
 
@@ -279,9 +279,6 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
             "Your goal is to fix errors in data preparation code without changing the intended functionality.\n"
             "Focus on addressing the specific error and improving data quality checks.\n"
             "Your output should match the original code structure as closely as possible while fixing the issue.\n"
-            "If the error indicates a dataset cannot be found, downloaded, or accessed (e.g., FileNotFoundError, "
-            "connection issues, HTTP 404, etc.), consider switching to an alternative dataset that serves a similar purpose. "
-            "Based on the error message semantics, determine if the issue is related to dataset accessibility.\n"
             "Format your response with the fixed code wrapped in ```python\n<code here>\n```\n"
         )
         
@@ -300,10 +297,6 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
             "You are a data preparation code repair tool specializing in targeted fixes.\n"
             "Your goal is to identify and fix the specific error in the data preprocessing code.\n"
             "Use the code editing tool to make minimal, focused changes that resolve the issue.\n"
-            "If the error suggests a dataset cannot be found, downloaded, or accessed (e.g., FileNotFoundError, "
-            "connection issues, HTTP errors, etc.), you should consider using an alternative dataset that serves "
-            "a similar purpose. Don't just retry the same dataset if the error indicates it's not available.\n"
-            "Analyze the error message semantics to determine if the dataset is inaccessible or if it's another kind of error.\n"
             "Format your response with the edit command: ```EDIT N M\n<new lines to replace old lines>\n```\n"
             "Where N is the first line to replace, M is the last line to replace, and the lines between are your fixes.\n"
             "Choose the smallest range of lines needed to fix the problem."
@@ -320,76 +313,6 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
         return model_resp
 
 
-def analyze_error(error_message, REPAIR_LLM, openai_api_key=None):
-    """
-    分析错误信息，判断是否是数据集访问问题
-    
-    Args:
-        error_message (str): 错误信息
-        REPAIR_LLM (str): LLM模型标识符
-        openai_api_key (str, optional): OpenAI API密钥
-        
-    Returns:
-        dict: 包含错误分析结果的字典
-    """
-    # 使用大模型分析错误而不是简单的关键词匹配
-    analysis_prompt = (
-        "Please analyze the following code execution error message and determine if it is related to dataset access problems. "
-        "Dataset access problems typically include but are not limited to:\n"
-        "1. File not found errors (FileNotFoundError)\n"
-        "2. Network connection errors (ConnectionError, URLError)\n"
-        "3. HTTP errors, especially 404 errors\n"
-        "4. Dataset download timeouts\n"
-        "5. Access permission issues\n"
-        "6. Incorrect dataset names or paths\n\n"
-        "Please perform a semantic analysis, rather than simply relying on keyword matching. Return your analysis in the following JSON format:\n"
-        "{\n"
-        '  "is_dataset_issue": true/false,  // Whether this is a dataset access issue\n'
-        '  "issue_type": "string",          // Description of the issue type\n'
-        '  "recommendation": "string",       // Recommended solution\n'
-        '  "confidence": 0-1.0               // Confidence level\n'
-        "}\n"
-    )
-    
-    try:
-        # 查询模型获取分析结果
-        response = query_model(
-            openai_api_key=openai_api_key,
-            model_str=f"{REPAIR_LLM}",
-            system_prompt="You are an AI assistant specialized in analyzing code execution errors. Using your semantic understanding capabilities, analyze error messages to determine if they are related to dataset access issues.",
-            prompt=f"{analysis_prompt}\n\nError message:\n{error_message}",
-            temp=0.1  # 低温度，保持确定性
-        )
-        
-        # 解析JSON响应
-        import json
-        import re
-        
-        # 尝试从响应中提取JSON
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            analysis = json.loads(json_match.group(0))
-        else:
-            # 如果无法提取JSON，返回默认分析
-            analysis = {
-                "is_dataset_issue": False,
-                "issue_type": "unknown",
-                "recommendation": "Please check the error message and fix the related issues.",
-                "confidence": 0.0
-            }
-        
-        return analysis
-    except Exception as e:
-        # 如果出现任何错误，返回默认分析
-        print(f"Error analyzing error message: {e}")
-        return {
-            "is_dataset_issue": False,
-            "issue_type": "analysis_error",
-            "recommendation": "An error occurred during analysis. Please check the error message and fix the related issues.",
-            "confidence": 0.0
-        }
-
-
 class DataSolver:
     """
     Main class for data preparation workflow
@@ -398,6 +321,8 @@ class DataSolver:
         self.suppress_print = False
         self.notes = [] if notes is None else notes
         self.dataset_code = dataset_code
+        # 标记数据集下载是否失败
+        self.dataset_failed = False
         self.plan = "" if plan is None else plan
         self.llm_str = llm_str
         self.verbose = False
@@ -412,10 +337,14 @@ class DataSolver:
         self.prev_code_ret = str()
         self.should_execute_code = True
         self.openai_api_key = openai_api_key
+        # Gather runtime environment information for prompt context
+        self.env_info = self._collect_env_info()
         self.lab_dir = lab_dir
         # Data preparation specific fields
         self.data_stats = {}  # Store dataset statistics
         self.validation_metrics = {}  # Data validation metrics
+        # Store latest feedback generated during command processing
+        self.latest_feedback = None
 
     def initial_solve(self):
         """
@@ -441,6 +370,19 @@ class DataSolver:
         
         # Extract and store initial data statistics if available
         self._extract_data_stats(init_return)
+
+        # ---------------- 添加初始反馈并写入历史 ----------------
+        try:
+            feedback_msg = self.feedback(init_return['output'] if isinstance(init_return, dict) else init_return)
+        except Exception as _fb_init_e:
+            feedback_msg = f"[Feedback generation failed at initialization]: {_fb_init_e}"
+            print(f"@@@ INIT DATA PREP FEEDBACK GENERATION FAILED: {feedback_msg}")
+
+        # 记录首轮历史，使用占位 cmd 名称 INITIAL_REPLACE 方便追踪
+        self.st_history.append(["INITIAL_REPLACE", feedback_msg, copy(self.code_lines), "INITIAL_REPLACE"])
+        # 控制历史长度
+        if len(self.st_history) > self.st_hist_len:
+            self.st_history.pop(0)
 
     @staticmethod
     def clean_text(text):
@@ -560,6 +502,9 @@ class DataSolver:
             else:
                 cmd_app_str = ""
                 
+            # 将上一轮即时反馈嵌入提示，帮助模型聚焦最新问题
+            latest_fb_str = f"\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else ""
+
             # Generate next data preparation improvement
             model_resp = query_model(
                 openai_api_key=self.openai_api_key,
@@ -567,6 +512,7 @@ class DataSolver:
                 system_prompt=self.system_prompt(),
                 prompt=(
                     f"The following is your history:{self.history_str()}\n\n"
+                    f"{latest_fb_str}"
                     f"{cmd_app_str}Now please analyze the current data preparation code and results, "
                     f"identify possible improvements, and enter a command to improve the data preparation: "
                 ),
@@ -581,10 +527,10 @@ class DataSolver:
             # Process the command
             cmd_str, code_lines, prev_code_ret, should_execute_code, score = self.process_command(model_resp)
             
-            # Update history
-            feedback_res = self.feedback(prev_code_ret)
-            # Update history with feedback
-            self.st_history.append([model_resp, prev_code_ret, feedback_res, code_lines, cmd_str])
+            # 直接使用在 process_command 内部即时生成的反馈
+            feedback_msg = getattr(self, "latest_feedback", None)
+            
+            self.st_history.append([model_resp, feedback_msg, code_lines, cmd_str])
             if len(self.st_history) > self.st_hist_len:
                 self.st_history.pop(0)
                 
@@ -612,10 +558,15 @@ class DataSolver:
             if num_attempts > self.max_steps * 2:
                 break
                 
+        # 如果没有有效 best_pkg（极端情况下 score 始终为 None），使用当前 best_codes[0] 作为回退
+        if best_pkg is None:
+            fallback_code, fallback_score, fallback_ret = self.best_codes[0]
+            best_pkg = (copy(fallback_code), copy(fallback_ret), False, "NO_VALID_CMD", "NO_VALID_CMD")
+
         # Set the best state as the current state
         self.code_lines, self.prev_code_ret, self.should_execute_code, model_resp, cmd_str = best_pkg
         if not self.suppress_print:
-            print(prev_code_ret)
+            print(self.prev_code_ret)
             
         # Update best codes collection with top scorer if it's better
         if top_score > self.best_codes[-1][1]:
@@ -728,10 +679,13 @@ class DataSolver:
                                     
                                 code_err += f"\nReturn from executing code on real data: {cmd_str}"
                                 
-                        # Try to repair code if failed
+                        # Try to repair code if failed —— 附加上一轮反馈信息
+                        code_err_with_fb = (
+                            code_err + f"\n\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else code_err
+                        )
                         repaired_code = code_repair(
                             model_resp, 
-                            code_err, 
+                            code_err_with_fb, 
                             REPAIR_LLM=self.llm_str, 
                             ctype="edit", 
                             openai_api_key=self.openai_api_key
@@ -756,6 +710,23 @@ class DataSolver:
                         # Extract data statistics from successful execution
                         self._extract_data_stats(prev_code_ret)
                         
+                    # ---- 生成反馈：区分成功 / 失败，保证反馈与保存的代码状态一致 ----
+                    try:
+                        # 选取用于反馈的代码行与运行输出
+                        if failed:
+                            feedback_output = code_err  # 失败时使用错误信息
+                            feedback_code = self.code_lines  # 未保存，仍保持原代码
+                        else:
+                            feedback_output = prev_code_ret['output'] if isinstance(prev_code_ret, dict) else prev_code_ret
+                            feedback_code = code_lines  # 成功时使用更新后的代码
+
+                        _old_code_lines = copy(self.code_lines)
+                        self.code_lines = copy(feedback_code)
+                        self.latest_feedback = self.feedback(feedback_output)
+                        self.code_lines = _old_code_lines
+                    except Exception as _fb_e:
+                        self.latest_feedback = f"[Feedback generation failed]: {_fb_e}"
+
                     return cmd_str, code_lines, prev_code_ret, should_execute_code, score
                 
                 # Process DATA-replace command
@@ -786,10 +757,13 @@ class DataSolver:
                                 
                             code_err += f"\nReturn from executing code on real data: {cmd_str}"
                             
-                        # Try to repair code if failed
+                        # Try to repair code if failed —— 附加上一轮反馈信息
+                        code_err_with_fb = (
+                            code_err + f"\n\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else code_err
+                        )
                         repaired_code = code_repair(
                             extract_prompt(model_resp, "REPLACE"), 
-                            code_err, 
+                            code_err_with_fb, 
                             ctype="replace", 
                             openai_api_key=self.openai_api_key, 
                             REPAIR_LLM=self.llm_str
@@ -816,11 +790,28 @@ class DataSolver:
                         # Extract data statistics from successful execution
                         self._extract_data_stats(prev_code_ret)
                         
+                    # ---- 生成反馈：区分成功 / 失败，保证反馈与保存的代码状态一致 ----
+                    try:
+                        if failed:
+                            feedback_output = code_err
+                            feedback_code = self.code_lines
+                        else:
+                            feedback_output = prev_code_ret['output'] if isinstance(prev_code_ret, dict) else prev_code_ret
+                            feedback_code = code_lines
+
+                        _old_code_lines = copy(self.code_lines)
+                        self.code_lines = copy(feedback_code)
+                        self.latest_feedback = self.feedback(feedback_output)
+                        self.code_lines = _old_code_lines
+                    except Exception as _fb_e:
+                        self.latest_feedback = f"[Feedback generation failed]: {_fb_e}"
+
                     return cmd_str, code_lines, prev_code_ret, should_execute_code, score
         
         # No valid command found
         if not self.suppress_print: 
             print("$$$$ INVALID DATA COMMAND (failed)")
+        self.latest_feedback = "No valid data command executed in this turn."
         return "Command not supported for data preparation, choose from existing commands", None, None, None, None
     
     def _extract_data_stats(self, code_output):
@@ -895,9 +886,21 @@ class DataSolver:
         Returns:
             str: System prompt for data preparation
         """
+        # 如果之前的数据集下载失败，强制提示更换数据集
+        dataset_failed_note = ""  # 默认无额外提示
+        if hasattr(self, 'dataset_failed') and self.dataset_failed:
+            dataset_failed_note = (
+                "\n\nIMPORTANT: The previously selected dataset failed to download or was unreachable. "
+                "In your VERY NEXT COMMAND, you MUST switch to a different lightweight public dataset (≤500MB) "
+                "available from sources like Hugging Face Datasets, Kaggle, or the UCI repository. "
+                "Do NOT attempt to download the same dataset again."
+            )
+
         return (
             # ROLE DESCRIPTION
             f"{self.role_description()}.\n"
+            # ENV INFO
+            f"Runtime environment information (Python/GPU/Packages):\n{self.env_info}\n"
             # TASK INSTRUCTIONS
             f"The following are your task instructions: {self.phase_prompt()}\n"
             # LIT REVIEW INSIGHTS
@@ -966,34 +969,15 @@ class DataSolver:
             if "[CODE EXECUTION ERROR]" in code_return:
                 if not self.suppress_print: 
                     print(f"@@@@ DATA PREP ERROR")
-                    
-                # 分析错误信息，判断是否是数据集访问问题
-                error_analysis = analyze_error(code_return, self.llm_str, self.openai_api_key)
-                
-                # 根据错误分析结果修改反馈提示
-                if error_analysis["is_dataset_issue"] and error_analysis["confidence"] > 0.6:
-                    print(f"@@@@ DATA PREP ERROR: {error_analysis['issue_type']}")
-                    dataset_issue_prompt = (
-                        f"This is your data preparation code: {code_str}\n\n"
-                        f"Your code returned the following error: {code_return}\n\n"
-                        f"Analysis indicates this might be a dataset access issue ({error_analysis['issue_type']}) with confidence {error_analysis['confidence']}.\n"
-                        f"Recommendation: {error_analysis['recommendation']}\n\n"
-                        f"Please consider switching to an alternative dataset that is similar but more accessible. In data preparation, "
-                        f"prioritize using reliable online sources like Hugging Face, UCI ML Repository, or small built-in datasets "
-                        f"from frameworks to avoid repeated failures due to inaccessible datasets.\n\n"
-                        f"Please provide a detailed explanation of how you plan to modify the code to address this issue, "
-                        f"including what alternative dataset you might choose and why it would be appropriate for the task."
-                    )
-                    reflect_prompt = dataset_issue_prompt
-                else:
-                    reflect_prompt = (
-                        f"This is your data preparation code: {code_str}\n\n"
-                        f"Your code returned the following error: {code_return}. "
-                        f"Please provide a detailed reflection on why this error occurred in the data preparation process, "
-                        f"which lines in the code caused this error, and exactly (line by line) how you hope to fix this "
-                        f"in the next update. Focus on data-specific issues like missing values, incorrect data types, "
-                        f"or data validation problems. This reflection will help your future self fix the error better."
-                    )
+                reflect_prompt = (
+                    f"This is your data preparation code: {code_str}\n\n"
+                    f"Your code returned the following error {code_return}. "
+                    f"Please provide a detailed reflection on why this error occurred in the data preparation process, "
+                    f"which lines in the code caused this error, and exactly (line by line) how you hope to fix this "
+                    f"in the next update. Focus on data-specific issues like missing values, incorrect data types, "
+                    f"or data validation problems. This reflection will help your future self fix the error better.\n"
+                    f"If the error suggests that the selected dataset cannot be accessed or downloaded — for instance the dataset URL is unreachable, the repository does not exist, or network requests repeatedly timeout — then in your NEXT COMMAND you MUST switch to a different lightweight public dataset rather than retrying the same one. Do NOT rely on exact keyword matching; make this judgment based on the semantic meaning of the error message itself."
+                )
             elif "data preparation complete" in code_return.lower() or "preprocessing complete" in code_return.lower():
                 self.prev_working_code = copy(self.code_lines)
                 grade_return = get_data_score(
@@ -1084,6 +1068,16 @@ class DataSolver:
         Returns:
             str: Phase prompt for data preparation
         """
+        # 如果之前的数据集下载失败，强制提示更换数据集
+        dataset_failed_note = ""  # 默认无额外提示
+        if hasattr(self, 'dataset_failed') and self.dataset_failed:
+            dataset_failed_note = (
+                "\n\nIMPORTANT: The previously selected dataset failed to download or was unreachable. "
+                "In your VERY NEXT COMMAND, you MUST switch to a different lightweight public dataset (≤500MB) "
+                "available from sources like Hugging Face Datasets, Kaggle, or the UCI repository. "
+                "Do NOT attempt to download the same dataset again."
+            )
+
         phase_str = (
             "You are a data scientist specializing in data preparation and preprocessing.\n"
             "Your goal is to produce high-quality code that prepares data for machine learning research. "
@@ -1099,17 +1093,12 @@ class DataSolver:
             "6. Preparing train/test splits when appropriate\n"
             "7. Scaling and normalization when needed\n\n"
             "IMPORTANT: Always download lightweight datasets from online sources rather than using local datasets. "
-            "Prefer datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 100MB). "
+            "Prefer datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 500MB). "
             "This ensures better reproducibility and avoids local file dependency issues. If using PyTorch or TensorFlow "
             "built-in datasets, choose the smallest appropriate version for the task.\n\n"
-            "DATASET AVAILABILITY HANDLING: If you encounter errors related to dataset availability or access (such as "
-            "network errors, file not found errors, or download failures), don't keep trying the same dataset. "
-            "Instead, analyze the error message to understand the issue, and select an alternative dataset with similar "
-            "properties that would be appropriate for the research task. The system will help you identify if an error "
-            "is related to dataset accessibility based on semantic analysis of error messages rather than simple keyword matching.\n\n"
             "You cannot pip install new libraries, but many data science libraries already work including "
             "pandas, numpy, scikit-learn, and matplotlib. Use print statements to show important data statistics "
-            "and validation results."
+            "and validation results." + dataset_failed_note
         )
         return phase_str
 
@@ -1210,6 +1199,9 @@ class DataSolver:
                 # Add log content if available and different from output
                 if log_content and log_content.strip() != output.strip():
                     output += f"\n\n[Program Execution Log]\n{log_content}"
+                # 如果检测到数据集下载失败标记，则设置标志位，供下次提示使用
+                if "[DATASET_DOWNLOAD_FAILED]" in output:
+                    self.dataset_failed = True
                 return output
             elif isinstance(code_result, str):
                 # Handle direct string return case
@@ -1219,3 +1211,36 @@ class DataSolver:
                 return str(code_result)
                 
         return "Changes have not yet been made to the data preparation code."
+
+    @staticmethod
+    def _collect_env_info():
+        """
+        Collect brief information about the current Python runtime, GPU availability and a subset of installed packages.
+        Returns:
+            str: JSON-like string summarizing environment info (truncated if overly long)
+        """
+        import sys, json
+        info = {
+            "python_version": sys.version.split(" ")[0]
+        }
+        # GPU info via torch if available
+        try:
+            import torch
+            info["torch_version"] = torch.__version__
+            info["cuda_available"] = torch.cuda.is_available()
+            if info["cuda_available"]:
+                info["cuda_device_count"] = torch.cuda.device_count()
+                info["cuda_devices"] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+        except ImportError:
+            info["cuda_available"] = False
+        # Include subset of installed packages for brevity
+        try:
+            import pkg_resources
+            pkgs = sorted([f"{d.project_name}=={d.version}" for d in pkg_resources.working_set])
+            info["top_packages"] = pkgs[:80]
+        except Exception:
+            pass
+        env_json = json.dumps(info, ensure_ascii=False)
+        if len(env_json) > 4000:
+            env_json = env_json[:4000] + "...(truncated)"
+        return env_json

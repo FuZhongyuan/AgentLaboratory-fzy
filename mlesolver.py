@@ -88,8 +88,8 @@ class Replace(Command):
             lab_dir = os.environ.get("CURRENT_OUTPUT_DIR", current_dir)
         # 传递lab_dir参数给execute_code
         code_ret = execute_code(code_exec, lab_dir=lab_dir)
-        if "[CODE EXECUTION ERROR]" in code_ret: return False, (None, code_ret,)
-        return True, (new_code.split("\n"), code_ret)
+        if "[CODE EXECUTION ERROR]" in code_ret['output']: return False, (None, code_ret['output'])
+        return True, (new_code.split("\n"), code_ret['output'])
 
 
 
@@ -135,8 +135,8 @@ class Edit(Command):
             # 传递lab_dir参数给execute_code
             code_ret = execute_code(code_exec, lab_dir=lab_dir)
             
-            if "CODE EXECUTION ERROR" in code_ret: return (False, None, code_ret)
-            return (True, current_code, code_ret)
+            if "CODE EXECUTION ERROR" in code_ret['output']: return (False, None, code_ret['output'])
+            return (True, current_code, code_ret['output'])
         except Exception as e:
             return (False, None, str(e))
 
@@ -223,7 +223,9 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
 
 class MLESolver:
     def __init__(self, dataset_code, openai_api_key=None, notes=None, max_steps=10, insights=None, plan=None, llm_str=None, lab_dir=None):
-        self.supress_print = False
+        # 统一命名，保留向后兼容
+        self.suppress_print = False
+        self.supress_print = self.suppress_print
         if notes is None: self.notes = []
         else: self.notes = notes
         self.dataset_code = dataset_code
@@ -244,6 +246,10 @@ class MLESolver:
         self.openai_api_key = openai_api_key
         # 存储实验目录
         self.lab_dir = lab_dir
+        # Gather runtime environment information for prompt context
+        self.env_info = self._collect_env_info()
+        # Store the latest feedback generated during command processing
+        self.latest_feedback = None
 
     def initial_solve(self):
         """
@@ -263,6 +269,16 @@ class MLESolver:
         self.model = f"{self.llm_str}"
         self.commands = [Edit(), Replace()]
         self.prev_working_code = copy(self.code_lines)
+
+        # -------- 添加初始反馈并写入历史 --------
+        try:
+            feedback_msg = self.feedback(init_return['output'] if isinstance(init_return, dict) else init_return)
+        except Exception as _fb_init_e:
+            feedback_msg = f"[Feedback generation failed at initialization]: {_fb_init_e}"
+
+        self.st_history.append(["INITIAL_REPLACE", feedback_msg, copy(self.code_lines), "INITIAL_REPLACE"])
+        if len(self.st_history) > self.st_hist_len:
+            self.st_history.pop(0)
 
     @staticmethod
     def clean_text(text):
@@ -305,17 +321,27 @@ class MLESolver:
         while True:
             if len(self.commands) == 2: cmd_app_str = "You must output either the ```EDIT or ```REPLACE command immediately. "
             else: cmd_app_str = ""
+            # 将上一轮即时反馈插入提示，帮助模型聚焦最新问题
+            latest_fb_str = f"\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else ""
+
             model_resp = query_model(
                 openai_api_key=self.openai_api_key,
                 model_str=self.model,
                 system_prompt=self.system_prompt(),
-                prompt=f"The following is your history:{self.history_str()}\n\n{cmd_app_str}Now please enter a command: ", temp=1.0)
+                prompt=(
+                    f"The following is your history:{self.history_str()}\n\n"
+                    f"{latest_fb_str}"
+                    f"{cmd_app_str}Now please enter a command: "
+                ),
+                temp=1.0)
             model_resp = self.clean_text(model_resp)
             self.code_lines = copy(random.choice(self.best_codes)[0])
             cmd_str, code_lines, prev_code_ret, should_execute_code, score = self.process_command(model_resp)
-            feedback_res = self.feedback(prev_code_ret)
-            # Update history with feedback
-            self.st_history.append([model_resp, prev_code_ret, feedback_res, code_lines, cmd_str])
+            # 直接使用在 process_command 内部即时生成的反馈
+            feedback_msg = getattr(self, "latest_feedback", None)
+
+            # 更新历史，使用反馈信息便于后续模型参考
+            self.st_history.append([model_resp, feedback_msg, code_lines, cmd_str])
             if len(self.st_history) > self.st_hist_len: self.st_history.pop(0)
             if score is not None:
                 if top_score is None:
@@ -328,6 +354,12 @@ class MLESolver:
             if not self.supress_print: print(f"$$$ Score: {score}")
             if num_attempts >= self.min_gen_trials and top_score is not None: break
             num_attempts += 1
+
+        # 如果 best_pkg 为 None，使用 best_codes[0] 回退
+        if best_pkg is None:
+            fallback_code, fallback_score, fallback_ret = self.best_codes[0]
+            best_pkg = (copy(fallback_code), copy(fallback_ret), False, "NO_VALID_CMD", "NO_VALID_CMD")
+
         self.code_lines, self.prev_code_ret, self.should_execute_code, model_resp, cmd_str = best_pkg
         if not self.supress_print: print(prev_code_ret)
         # add top scoring code that was successful to the best codes
@@ -384,8 +416,12 @@ class MLESolver:
                                 if is_valid:
                                     failed = False
                                     break
-                                code_err += f"\nReturn from executing code on real test set {cmd_str}"
-                        repaired_code = code_repair(model_resp, code_err, REPAIR_LLM=self.llm_str, ctype="edit", openai_api_key=self.openai_api_key)
+                                    code_err += f"\nReturn from executing code on real test set {cmd_str}"
+                        # 在错误信息中加入上一轮反馈，帮助修复 LLM 获取更多上下文
+                        code_err_with_fb = (
+                            code_err + f"\n\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else code_err
+                        )
+                        repaired_code = code_repair(model_resp, code_err_with_fb, REPAIR_LLM=self.llm_str, ctype="edit", openai_api_key=self.openai_api_key)
                         model_resp = repaired_code
                         if not self.supress_print: print(f"     * Attempting repair // try {_tries}*")
                     if failed:
@@ -396,6 +432,23 @@ class MLESolver:
                         prev_code_ret = copy(cmd_return[2])
                         if not self.supress_print: print("$$$$ CODE EDIT (success)")
                         should_execute_code = True
+
+                    # ---- 生成反馈：区分成功 / 失败 ----
+                    try:
+                        if failed:
+                            feedback_output = code_err
+                            feedback_code = self.code_lines
+                        else:
+                            feedback_output = prev_code_ret
+                            feedback_code = code_lines
+
+                        _old_code_lines = copy(self.code_lines)
+                        self.code_lines = copy(feedback_code)
+                        self.latest_feedback = self.feedback(feedback_output)
+                        self.code_lines = _old_code_lines
+                    except Exception as _fb_e:
+                        self.latest_feedback = f"[Feedback generation failed]: {_fb_e}"
+
                     return cmd_str, code_lines, prev_code_ret, should_execute_code, score
                 # attempt to execute the code replace command
                 elif cmd.cmd_type == "CODE-replace": # DONE
@@ -412,7 +465,11 @@ class MLESolver:
                                 failed = False
                                 break
                             code_err += f"\nReturn from executing code on real test set {cmd_str}"
-                        repaired_code = code_repair(extract_prompt(model_resp, "REPLACE", ), code_err, ctype="replace", openai_api_key=self.openai_api_key, REPAIR_LLM=self.llm_str)
+                        # 在错误信息中加入上一轮反馈，帮助修复 LLM 获取更多上下文
+                        code_err_with_fb = (
+                            code_err + f"\n\nLATEST_FEEDBACK:\n{self.latest_feedback}\n" if self.latest_feedback else code_err
+                        )
+                        repaired_code = code_repair(extract_prompt(model_resp, "REPLACE", ), code_err_with_fb, ctype="replace", openai_api_key=self.openai_api_key, REPAIR_LLM=self.llm_str)
                         repaired_code = f"```REPLACE\n{repaired_code}\n```"
                         model_resp = repaired_code
                         if not self.supress_print: print(f"     * Attempting repair // try {_tries}*")
@@ -425,8 +482,27 @@ class MLESolver:
                         prev_code_ret = copy(args[1])
                         if not self.supress_print: print("$$$$ CODE REPLACE (success)")
                         should_execute_code = True
+
+                    # ---- 生成反馈：区分成功 / 失败 ----
+                    try:
+                        if failed:
+                            feedback_output = code_err
+                            feedback_code = self.code_lines
+                        else:
+                            feedback_output = prev_code_ret
+                            feedback_code = code_lines
+
+                        _old_code_lines = copy(self.code_lines)
+                        self.code_lines = copy(feedback_code)
+                        self.latest_feedback = self.feedback(feedback_output)
+                        self.code_lines = _old_code_lines
+                    except Exception as _fb_e:
+                        self.latest_feedback = f"[Feedback generation failed]: {_fb_e}"
+
                     return cmd_str, code_lines, prev_code_ret, should_execute_code, score
         if not self.supress_print: print("$$$$ INVALID COMMAND (failed)")
+        # 无有效命令时，也记录空反馈避免历史缺失
+        self.latest_feedback = "No valid command executed in this turn."
         return "Command not supported, choose from existing commands", None, None, None, None
 
     def history_str(self):
@@ -453,6 +529,8 @@ class MLESolver:
         return (
             # ROLE DESCRIPTION
             f"{self.role_description()}.\n"
+            # ENV INFO
+            f"Runtime environment information (Python/GPU/Packages):\n{self.env_info}\n"
             # TASK INSTRUCTIONS
             f"The following are your task instructions: {self.phase_prompt()}\n"
             # LIT REVIEW INSIGHTS
@@ -625,6 +703,36 @@ class MLESolver:
                 return str(code_result)
         return "Changes have not yet been made to the code."
 
+    @staticmethod
+    def _collect_env_info():
+        """
+        Collect brief information about the current Python runtime, GPU availability and a subset of installed packages.
 
-
-
+        Returns:
+            str: JSON-like string summarizing environment info (truncated if overly long)
+        """
+        import sys, json
+        info = {
+            "python_version": sys.version.split(" ")[0]
+        }
+        # GPU info via torch if available
+        try:
+            import torch
+            info["torch_version"] = torch.__version__
+            info["cuda_available"] = torch.cuda.is_available()
+            if info["cuda_available"]:
+                info["cuda_device_count"] = torch.cuda.device_count()
+                info["cuda_devices"] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+        except ImportError:
+            info["cuda_available"] = False
+        # Include subset of installed packages for brevity
+        try:
+            import pkg_resources
+            pkgs = sorted([f"{d.project_name}=={d.version}" for d in pkg_resources.working_set])
+            info["top_packages"] = pkgs[:80]
+        except Exception:
+            pass
+        env_json = json.dumps(info, ensure_ascii=False)
+        if len(env_json) > 4000:
+            env_json = env_json[:4000] + "...(truncated)"
+        return env_json

@@ -620,12 +620,21 @@ def ensure_user_path(path):
         exec(f"exec(open('{code_filepath}').read())", globals_dict)
         
     except Exception as e:
-        error_msg = f"[CODE EXECUTION ERROR]: {str(e)}\n"
-        output_capture.write(error_msg)
-        if log_file:
-            log_file.write(error_msg)
-            traceback.print_exc(file=log_file)
-        traceback.print_exc(file=output_capture)
+        import urllib.error
+        # 基于异常类型的通用网络下载错误检测，避免硬编码数据集名
+        network_error_types = (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            ConnectionError,
+            TimeoutError,
+            OSError,  # 某些网络超时也表现为 OSError: [Errno 101] Network is unreachable
+        )
+
+        err_prefix = "[CODE EXECUTION ERROR]: "
+        # 如果是下载/连接相关错误，则额外附加 DATASET_DOWNLOAD_FAILED 标志
+        if isinstance(e, network_error_types):
+            err_prefix = "[DATASET_DOWNLOAD_FAILED] " + err_prefix
+        dual_print(f"{err_prefix}{str(e)}")
     finally:
         # 恢复原始工作目录
         if output_dir:

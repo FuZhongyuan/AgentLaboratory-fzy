@@ -160,6 +160,77 @@ def compile_latex(latex_code, output_path, compile=True, timeout=30):
         return f"[CODE EXECUTION ERROR]: Compilation failed. There was an error in your latex."
 
 
+def compile_latex_chinese(latex_code, output_path, compile: bool = True, timeout: int = 60):
+    """
+    专为中文（ctexart 文档类）报告设计的 LaTeX 编译辅助函数。
+
+    参考 compile_latex，但使用 xelatex/latexmk -xelatex 以获得对 UTF-8 中文字体的良好支持。
+    参数说明
+    ----------
+    latex_code : str
+        完整的 LaTeX 源码字符串（一般来自 report_中文.txt）。
+    output_path : str
+        用于保存 tex 及 pdf 的目录，函数会在其中创建 tex/ 子目录。
+    compile : bool, default True
+        是否实际调用 LaTeX 引擎进行编译。若仅想测试生成 tex 文件，可设置为 False。
+    timeout : int, default 60
+        编译超时时间（秒）。
+    返回
+    ------
+    str
+        代表编译结果的字符串信息。
+    """
+    # 1. 强制使用 ctexart 文档类，并追加常用宏包（与英文版本保持一致，额外保证中文兼容）。
+    if r"\documentclass[UTF8]{ctexart}" in latex_code:
+        latex_code = latex_code.replace(
+            r"\documentclass[UTF8]{ctexart}",
+            "\\documentclass[UTF8]{ctexart}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{array}\n\\usepackage{algorithm}\n\\usepackage{algorithmicx}\n\\usepackage{algpseudocode}\n\\usepackage{booktabs}\n\\usepackage{colortbl}\n\\usepackage{color}\n\\usepackage{enumitem}\n\\usepackage{fontawesome5}\n\\usepackage{float}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{listings}\n\\usepackage{makecell}\n\\usepackage{multicol}\n\\usepackage{multirow}\n\\usepackage{pgffor}\n\\usepackage{pifont}\n\\usepackage{soul}\n\\usepackage{sidecap}\n\\usepackage{subcaption}\n\\usepackage{titletoc}\n\\usepackage[symbol]{footmisc}\n\\usepackage{url}\n\\usepackage{wrapfig}\n\\usepackage{xcolor}\n\\usepackage{xspace}")
+    else:
+        # 假如用户错误地使用了 article，我们自动替换为支持中文的 ctexart
+        latex_code = latex_code.replace(
+            r"\documentclass{article}",
+            "\\documentclass[UTF8]{ctexart}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{array}\n\\usepackage{algorithm}\n\\usepackage{algorithmicx}\n\\usepackage{algpseudocode}\n\\usepackage{booktabs}\n\\usepackage{colortbl}\n\\usepackage{color}\n\\usepackage{enumitem}\n\\usepackage{fontawesome5}\n\\usepackage{float}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{listings}\n\\usepackage{makecell}\n\\usepackage{multicol}\n\\usepackage{multirow}\n\\usepackage{pgffor}\n\\usepackage{pifont}\n\\usepackage{soul}\n\\usepackage{sidecap}\n\\usepackage{subcaption}\n\\usepackage{titletoc}\n\\usepackage[symbol]{footmisc}\n\\usepackage{url}\n\\usepackage{wrapfig}\n\\usepackage{xcolor}\n\\usepackage{xspace}")
+
+    # 2. 创建 tex 目录并写入 temp.tex
+    dir_path = os.path.join(output_path, "tex")
+    os.makedirs(dir_path, exist_ok=True)
+    tex_file_path = os.path.join(dir_path, "temp-zh.tex")
+    with open(tex_file_path, "w", encoding="utf-8") as f:
+        f.write(latex_code)
+
+    if not compile:
+        return "TeX 文件已生成，跳过编译（compile=False）"
+
+    # 3. 优先尝试 latexmk -xelatex（效果更好），若不可用则回退至 xelatex。
+    compile_cmds = [
+        ["latexmk", "-xelatex", "-interaction=nonstopmode", "-halt-on-error", "temp-zh.tex"],
+        ["xelatex", "-interaction=nonstopmode", "temp-zh.tex"]
+    ]
+
+    last_error = None
+    for cmd in compile_cmds:
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                cwd=dir_path
+            )
+            return f"Compilation successful (command: {' '.join(cmd)}): {result.stdout.decode('utf-8')}"
+        except FileNotFoundError as e:
+            # 对于 latexmk/xelatex 未安装的情况，继续尝试下一条指令
+            last_error = e
+            continue
+        except subprocess.TimeoutExpired:
+            return f"[CODE EXECUTION ERROR]: Compilation timed out after {timeout} seconds"
+        except subprocess.CalledProcessError as e:
+            return f"[CODE EXECUTION ERROR]: Compilation failed with exit code {e.returncode}. Stderr: {e.stderr.decode('utf-8', errors='ignore')}"
+
+    return f"[CODE EXECUTION ERROR]: 编译器 (latexmk/xelatex) 未找到或执行失败: {last_error}"
+
+
 def count_tokens(messages, model="gpt-4"):
     enc = tiktoken.encoding_for_model(model)
     num_tokens = sum([len(enc.encode(message["content"])) for message in messages])

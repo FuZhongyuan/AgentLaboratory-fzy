@@ -1,0 +1,88 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：CNN结构综述与CIFAR10分类实验分析
+research-topic: "GAN结构综述与实验对比分析"
+research-dir-path: "GAN_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "English"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: true  # 自动编译LaTeX生成PDF
+datasolver-max-steps: 3
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+    - '系统调研GAN（生成对抗网络）的原理与发展，重点理解其在图像生成任务中的应用。'
+    - '重点阅读并对比原始GAN与DCGAN（深度卷积GAN）的结构差异、收敛特性和图像生成质量表现。'
+    - '查阅PyTorch官方文档及GitHub项目，理解GAN与DCGAN实现细节，尤其在FashionMNIST任务上的应用。'
+    - '系统调研GAV的发展历程。'
+
+  plan-formulation:
+    - '明确实验目标：掌握GAN原理、实现基础GAN与DCGAN、在FashionMNIST上进行训练与分析。'
+    - '实验步骤包括：搭建网络结构 → 模型训练 → 图像生成与分析 → 随机数扰动实验 → 编写报告总结。'
+    - '自定义任务设计中，重点突出随机噪声向量对生成图像的影响机制。'
+    - '制定训练计划，合理选择训练轮数、学习率、批次大小等超参数，以确保loss稳定收敛。'
+
+  data-preparation:
+    - '使用PyTorch内置FashionMNIST数据集，自动完成下载、预处理（标准化）和加载。'
+    - '展示FashionMNIST的典型样本图像，以说明数据特征（如服饰类别、图像尺寸、灰度级）。'
+    - '若有需要，可扩展为可视化训练集分布、数据增强等辅助分析。'
+
+  running-experiments:
+    - '基于原始GAN结构完成初始训练，记录生成器与判别器的loss变化趋势。'
+    - '绘制训练loss曲线图，展示模型训练的收敛过程和对抗动态变化。'
+    - '搭建并训练DCGAN版本，比较其在FashionMNIST上的生成质量和收敛表现。'
+    - '自定义固定噪声向量，生成8张图像，并展示生成图像的代表性特征。'
+    - '选取100个随机数中的5个，每个扰动3次，记录扰动前后生成图像变化，共15组，每组8张图像。'
+
+  results-interpretation:
+    - '分析训练loss曲线中生成器与判别器的博弈过程是否达到动态平衡。'
+    - '通过比较GAN与DCGAN的生成图像，对比两种模型在结构设计上的优势与不足。'
+    - '深入分析不同随机向量扰动对图像特征的影响，总结各向量维度可能控制的生成特征（如形状、风格、局部纹理）。'
+    - '探索潜在空间中连续变化对应的图像生成连续性与语义一致性。'
+    - '归纳并解释为何某些维度的扰动对图像生成具有更显著的控制效果。'
+
+  report-writing:
+    - '撰写完整实验报告，包含以下内容：'
+    - '- 模型结构描述（包括生成器与判别器架构）'
+    - '- loss曲线与训练行为分析'
+    - '- 固定噪声生成图像展示'
+    - '- 噪声扰动实验结果与图像对比'
+    - '- 不同随机数维度对生成图像的控制能力总结'
+    - '每组结果均配有示意图或图像网格展示，并辅以文字说明分析。'
+
+  report-refinement:
+    - '报告语言准确、逻辑清晰，图表编号规范。'
+    - '图像统一格式，合理排版，附有图注说明。'
+    - '附录中列出网络结构代码概要与超参数设置，便于复现。'
+    - '若使用DCGAN作为加分项，需在报告中单独标明其结构调整与生成效果提升。'
+
+  report-translation:
+    - '请在保持公式与引用不变的前提下，将整份报告译为中文，并确保术语准确。'
+  

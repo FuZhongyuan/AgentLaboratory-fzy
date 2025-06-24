@@ -20,7 +20,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, datasolver_max_steps=3, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, datasolver_max_steps=3, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None, language="English"):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -45,6 +45,7 @@ class LaboratoryWorkflow:
         self.model_backbone = agent_model_backbone
         self.num_papers_lit_review = num_papers_lit_review
         self.state_callback = state_callback
+        self.language = language  # 研究报告目标语言
 
         self.print_cost = True
         self.review_override = True # should review be overridden?
@@ -67,7 +68,7 @@ class LaboratoryWorkflow:
             ("literature review", ["literature review"]),
             ("plan formulation", ["plan formulation"]),
             ("experimentation", ["data preparation", "running experiments"]),
-            ("results interpretation", ["results interpretation", "report writing", "report refinement"]),
+            ("results interpretation", ["results interpretation", "report writing", "report translation", "report refinement"]),
         ]
         self.phase_status = dict()
         for phase, subtasks in self.phases:
@@ -92,6 +93,7 @@ class LaboratoryWorkflow:
             "running experiments":    {"time": 0.0, "steps": 0.0,},
             "results interpretation": {"time": 0.0, "steps": 0.0,},
             "report writing":         {"time": 0.0, "steps": 0.0,},
+            "report translation":    {"time": 0.0, "steps": 0.0,},
             "report refinement":      {"time": 0.0, "steps": 0.0,},
         }
 
@@ -196,14 +198,14 @@ class LaboratoryWorkflow:
                     repeat = True
                     while repeat: repeat = self.plan_formulation()
                     self.phase_status[subtask] = True
-                if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "data preparation":
-                    repeat = True
-                    while repeat: repeat = self.data_preparation()
-                    self.phase_status[subtask] = True
-                if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "running experiments":
-                    repeat = True
-                    while repeat: repeat = self.running_experiments()
-                    self.phase_status[subtask] = True
+                # if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "data preparation":
+                #     repeat = True
+                #     while repeat: repeat = self.data_preparation()
+                #     self.phase_status[subtask] = True
+                # if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "running experiments":
+                #     repeat = True
+                #     while repeat: repeat = self.running_experiments()
+                #     self.phase_status[subtask] = True
                 if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "results interpretation":
                     repeat = True
                     while repeat: repeat = self.results_interpretation()
@@ -211,6 +213,10 @@ class LaboratoryWorkflow:
                 if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "report writing":
                     repeat = True
                     while repeat: repeat = self.report_writing()
+                    self.phase_status[subtask] = True
+                if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "report translation":
+                    repeat = True
+                    while repeat: repeat = self.report_translation()
                     self.phase_status[subtask] = True
                 if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "report refinement":
                     return_to_exp_phase = self.report_refinement()
@@ -234,6 +240,7 @@ class LaboratoryWorkflow:
                     self.phase_status["running experiments"] = False
                     self.phase_status["results interpretation"] = False
                     self.phase_status["report writing"] = False
+                    self.phase_status["report translation"] = False
                     self.phase_status["report refinement"] = False
                     self.perform_research()
                 if self.save: 
@@ -609,6 +616,61 @@ class LaboratoryWorkflow:
                 self.statistics_per_phase["literature review"]["steps"] = _i
                 return False
 
+    def report_translation(self):
+        """执行报告翻译阶段。如果目标语言为英语则直接跳过。"""
+        from translator import translate_report  # 延迟导入，防止循环依赖
+
+        if self.language.lower() in ["english", "en"]:
+            if self.verbose:
+                print("[report translation] 目标语言为英文，跳过翻译阶段。")
+            return False  # 不需要重复
+
+        original_report = self.phd.report
+        if not original_report:
+            raise ValueError("在翻译阶段未检测到报告内容，请确认 report writing 阶段已完成。")
+
+        # 使用配置中的 API Key 和模型名称进行翻译
+        model_name = None
+        if isinstance(self.phase_models, dict):
+            model_name = self.phase_models.get("report translation")
+        if not model_name:
+            model_name = self.model_backbone if isinstance(self.model_backbone, str) else DEFAULT_LLM_BACKBONE
+
+        translated_text, success = translate_report(
+            original_report,
+            self.language,
+            model_name=model_name,
+            api_key=self.openai_api_key
+        )
+
+        if not success:
+            print("[report translation] 翻译失败或未发生变化，保留英文原文。")
+            return False
+
+        # 将翻译结果写入文件
+        if self.lab_dir:
+            save_to_file(self.lab_dir, f"report_{self.language}.txt", translated_text)
+
+        # 更新代理的报告内容为翻译后文本
+        self.set_agent_attr("report", translated_text)
+
+        if self.verbose:
+            print(f"[report translation] 已完成报告翻译 -> {self.language}")
+
+        # 若需要重新编译 LaTeX PDF —— 中文文档使用 utils.compile_latex_chinese
+        if self.compile_pdf and self.lab_dir:
+            try:
+                from utils import compile_latex_chinese  # 本地导入，避免循环依赖
+                compile_msg = compile_latex_chinese(translated_text, self.lab_dir, compile=True)
+                if self.verbose:
+                    print(f"[report translation] {compile_msg}")
+            except Exception as e:
+                print(f"[report translation] 中文 PDF 编译失败: {e}")
+
+        # 重置代理状态
+        self.reset_agents()
+        return False
+
     def human_in_loop(self, phase, phase_prod):
         """
         Get human feedback for phase output
@@ -639,7 +701,7 @@ class LaboratoryWorkflow:
         return False
 
 class AgentRxiv:
-    def __init__(self, lab_index=0, port=None):
+    def __init__(self, lab_index=0, port=None, model=None, api_key=None):
         self.lab_index = lab_index
         self.server_thread = None
         # 不再初始化服务器，因为应该只通过app.py启动
@@ -647,6 +709,14 @@ class AgentRxiv:
         self.pdf_text = dict()
         self.summaries = dict()
         self.port = port if port is not None else 5000 + self.lab_index
+        # 强制要求用户显式提供模型名称和 OpenAI API Key
+        self.default_model = model
+        self.openai_api_key = api_key
+
+        if self.default_model is None:
+            raise ValueError("AgentRxiv 初始化时必须显式提供 model 参数，禁止使用默认模型。")
+        if self.openai_api_key is None:
+            raise ValueError("AgentRxiv 初始化时必须显式提供 api_key 参数，禁止依赖环境变量。")
         
         # 检查服务器是否已经运行
         if not self.check_server_running():
@@ -712,11 +782,12 @@ class AgentRxiv:
                     response = requests.get(result['pdf_url'])
                     filename.write_bytes(response.content)
                     self.pdf_text[arxiv_id] = self.read_pdf_pypdf2(f'_tmp_{self.lab_index}.pdf')
+                    # 使用用户显式提供的模型名称和 API Key 生成摘要
                     self.summaries[arxiv_id] = query_model(
                         prompt=self.pdf_text[arxiv_id],
                         system_prompt="Please provide a 5 sentence summary of this paper.",
-                        openai_api_key=os.getenv('OPENAI_API_KEY'),
-                        model_str="gpt-4o-mini"
+                        openai_api_key=self.openai_api_key,
+                        model_str=self.default_model
                     )
                 return_str += f"Title: {result['filename']}"
                 return_str += f"Summary: {self.summaries[arxiv_id]}\n"
@@ -824,7 +895,7 @@ if __name__ == "__main__":
         print("="*60 + "\n")
         
         # 创建一个临时AgentRxiv对象来检查服务器是否运行
-        temp_agent_rxiv = AgentRxiv(lab_index)
+        temp_agent_rxiv = AgentRxiv(lab_index=lab_index, model=llm_backend)
         if not temp_agent_rxiv.check_server_running():
             user_continue = input("服务器似乎未运行。是否继续执行？(y/n): ").strip().lower()
             if user_continue != 'y':
@@ -869,7 +940,7 @@ if __name__ == "__main__":
     # 添加数据准备阶段的提示词，要求从网上下载轻量数据集
     task_notes_LLM.append({
         "phases": ["data preparation"],
-        "note": "Always prefer to download lightweight datasets from online sources rather than using local datasets. Use datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 100MB). This ensures better reproducibility and avoids local file dependency issues. If using PyTorch or TensorFlow built-in datasets, choose the smallest appropriate version for the task."
+        "note": "Always prefer to download lightweight datasets from online sources rather than using local datasets. Use datasets from Hugging Face, Kaggle, or UCI ML Repository that are small in size (preferably under 500MB). This ensures better reproducibility and avoids local file dependency issues. If using PyTorch or TensorFlow built-in datasets, choose the smallest appropriate version for the task."
     })
 
     # 如果指定语言不是英语，添加通用语言提示
@@ -890,6 +961,7 @@ if __name__ == "__main__":
         "running experiments":    human_mode,
         "results interpretation": human_mode,
         "report writing":         human_mode,
+        "report translation":     human_mode,
         "report refinement":      human_mode,
     }
 
@@ -900,6 +972,7 @@ if __name__ == "__main__":
         "running experiments":    llm_backend,
         "results interpretation": llm_backend,
         "report writing":         llm_backend,
+        "report translation":     llm_backend,
         "report refinement":      llm_backend,
     }
     if parallel_labs:
@@ -912,7 +985,7 @@ if __name__ == "__main__":
             print(f"python app.py --port {5000 + i}")
         print("="*60 + "\n")
         
-        GLOBAL_AGENTRXIV = AgentRxiv()  # 这里不再启动服务器，只初始化对象用于API访问
+        GLOBAL_AGENTRXIV = AgentRxiv(model=llm_backend, api_key=api_key)  # 初始化对象并显式指定模型与API Key
         remove_directory(f"{research_dir_path}")
         os.mkdir(os.path.join(".", f"{research_dir_path}"))
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -922,7 +995,7 @@ if __name__ == "__main__":
             time_now = time.time()
             
             # 检查该实验室对应的端口上的服务器是否运行
-            temp_agent_rxiv = AgentRxiv(parallel_lab_index)
+            temp_agent_rxiv = AgentRxiv(lab_index=parallel_lab_index, model=llm_backend, api_key=api_key)
             if not temp_agent_rxiv.check_server_running():
                 print(f"[警告] 实验室 #{parallel_lab_index} 的AgentRxiv服务器未在端口 {5000 + parallel_lab_index} 运行")
                 print(f"该实验室的执行可能会失败，如果需要使用AgentRxiv功能")
@@ -948,7 +1021,8 @@ if __name__ == "__main__":
                     except_if_fail=except_if_fail,
                     lab_dir=lab_dir,
                     agentRxiv=True,
-                    agentrxiv_papers=args.agentrxiv_papers
+                    agentrxiv_papers=args.agentrxiv_papers,
+                    language=args.language
                 )
                 lab_instance.perform_research()
                 time_str += str(time.time() - time_now) + " | "
@@ -965,7 +1039,7 @@ if __name__ == "__main__":
     else:
         # remove previous files
         remove_figures()
-        if agentRxiv: GLOBAL_AGENTRXIV = AgentRxiv(lab_index)  # 这里不再启动服务器，只初始化对象用于API访问
+        if agentRxiv: GLOBAL_AGENTRXIV = AgentRxiv(lab_index=lab_index, model=llm_backend, api_key=api_key)  # 初始化对象并显式指定模型与API Key
         if not agentRxiv:
             remove_directory(f"{research_dir_path}")
             os.mkdir(os.path.join(".", f"{research_dir_path}"))
@@ -992,7 +1066,8 @@ if __name__ == "__main__":
                 except_if_fail=except_if_fail,
                 agentRxiv=False,
                 lab_index=lab_index,
-                lab_dir=os.path.join(".", lab_direct)
+                lab_dir=os.path.join(".", lab_direct),
+                language=args.language
             )
             lab.perform_research()
             time_str += str(time.time() - time_now) + " | "
