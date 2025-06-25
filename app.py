@@ -452,7 +452,7 @@ def run_research_task(task_id, user_id, topic, config_path):
     后台运行研究任务
     """
     if not AI_LAB_AVAILABLE:
-        update_task_status(task_id, 'failed', error_message="fzy实验室模块不可用")
+        update_task_status(task_id, 'failed', error_message="fzy Report Agent模块不可用")
         return
     
     try:
@@ -1370,7 +1370,7 @@ def continue_research_task(task_id, user_id, state_path, phase):
         phase (str): 恢复的阶段
     """
     if not AI_LAB_AVAILABLE:
-        update_task_status(task_id, 'failed', error_message="fzy实验室模块不可用")
+        update_task_status(task_id, 'failed', error_message="fzy Report Agent模块不可用")
         return
     
     try:
@@ -1419,7 +1419,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--port',
         type=int,
-        default=6000,
+        default=5200,
         help='Web服务器监听端口'
     )
     parser.add_argument(

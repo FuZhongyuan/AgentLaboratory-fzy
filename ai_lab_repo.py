@@ -200,14 +200,14 @@ class LaboratoryWorkflow:
                     repeat = True
                     while repeat: repeat = self.plan_formulation()
                     self.phase_status[subtask] = True
-                # if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "data preparation":
-                #     repeat = True
-                #     while repeat: repeat = self.data_preparation()
-                #     self.phase_status[subtask] = True
-                # if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "running experiments":
-                #     repeat = True
-                #     while repeat: repeat = self.running_experiments()
-                #     self.phase_status[subtask] = True
+                if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "data preparation":
+                    repeat = True
+                    while repeat: repeat = self.data_preparation()
+                    self.phase_status[subtask] = True
+                if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "running experiments":
+                    repeat = True
+                    while repeat: repeat = self.running_experiments()
+                    self.phase_status[subtask] = True
                 if (subtask not in self.phase_status or not self.phase_status[subtask]) and subtask == "results interpretation":
                     repeat = True
                     while repeat: repeat = self.results_interpretation()

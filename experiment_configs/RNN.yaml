@@ -1,7 +1,7 @@
 # 开启用户交互模式
 copilot-mode: False
 
-# 研究主题：CNN结构综述与CIFAR10分类实验分析
+# 研究主题：RNN结构综述与实验对比分析
 research-topic: "RNN结构综述与实验对比分析"
 research-dir-path: "RNN_research_dir"
 

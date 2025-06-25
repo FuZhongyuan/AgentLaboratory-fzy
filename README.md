@@ -1,4 +1,4 @@
-# fzy Agent: Using LLM Agents as Research Assistants
+# fzy Report Agent: Using LLM Agents as Research Assistants
 
 
 <p align="center">
@@ -18,22 +18,22 @@
 
 ## 📖 Overview
 
-- **fzy Agent** is an end-to-end autonomous research workflow meant to assist **you** as the human researcher toward **implementing your research ideas**. fzy Agent consists of specialized agents driven by large language models to support you through the entire research workflow—from conducting literature reviews and formulating plans to executing experiments and writing comprehensive reports. 
-- This system is not designed to replace your creativity but to complement it, enabling you to focus on ideation and critical thinking while automating repetitive and time-intensive tasks like coding and documentation. By accommodating varying levels of computational resources and human involvement, fzy Agent aims to accelerate scientific discovery and optimize your research productivity.
+- **fzy Report Agent** is an end-to-end autonomous research workflow meant to assist **you** as the human researcher toward **implementing your research ideas**. fzy Report Agent consists of specialized agents driven by large language models to support you through the entire research workflow—from conducting literature reviews and formulating plans to executing experiments and writing comprehensive reports. 
+- This system is not designed to replace your creativity but to complement it, enabling you to focus on ideation and critical thinking while automating repetitive and time-intensive tasks like coding and documentation. By accommodating varying levels of computational resources and human involvement, fzy Report Agent aims to accelerate scientific discovery and optimize your research productivity.
 <p align="center">
   <img src="media/AgentLab.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
 </p>
 
-- fzy Agent also supports **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other's research. This allows agents to make cumulative progress on their research.
+- fzy Report Agent also supports **AgentRxiv**, a framework where autonomous research agents can upload, retrieve, and build on each other's research. This allows agents to make cumulative progress on their research.
 
 <p align="center">
   <img src="media/agentrxiv.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
 </p>
 
 
-### 🔬 How does fzy Agent work?
+### 🔬 How does fzy Report Agent work?
 
-- fzy Agent consists of three primary phases that systematically guide the research process: (1) Literature Review, (2) Experimentation, and (3) Report Writing. During each phase, specialized agents driven by LLMs collaborate to accomplish distinct objectives, integrating external tools like arXiv, Hugging Face, Python, and LaTeX to optimize outcomes. This structured workflow begins with the independent collection and analysis of relevant research papers, progresses through collaborative planning and data preparation, and results in automated experimentation and comprehensive report generation. Details on specific agent roles and their contributions across these phases are discussed in the paper.
+- fzy Report Agent consists of three primary phases that systematically guide the research process: (1) Literature Review, (2) Experimentation, and (3) Report Writing. During each phase, specialized agents driven by LLMs collaborate to accomplish distinct objectives, integrating external tools like arXiv, Hugging Face, Python, and LaTeX to optimize outcomes. This structured workflow begins with the independent collection and analysis of relevant research papers, progresses through collaborative planning and data preparation, and results in automated experimentation and comprehensive report generation. Details on specific agent roles and their contributions across these phases are discussed in the paper.
 
 <p align="center">
   <img src="media/AgentLabWF.png" alt="Demonstration of the flow of AgentClinic" style="width: 99%;">
@@ -77,18 +77,18 @@ pip install -r requirements.txt
 sudo apt install pdflatex
 ```
 - This enables latex source to be compiled by the agents.
-- **[IMPORTANT]** If this step cannot be run due to not having sudo access, pdf compiling can be turned off via running fzy Agent via setting the `--compile-latex` flag to false: `--compile-latex "false"`
+- **[IMPORTANT]** If this step cannot be run due to not having sudo access, pdf compiling can be turned off via running fzy Report Agent via setting the `--compile-latex` flag to false: `--compile-latex "false"`
 
 
 
-5. **Now run fzy Agent!**
+5. **Now run fzy Report Agent!**
 
 `python ai_lab_repo.py --yaml-location "experiment_configs/MATH_agentlab.yaml"`
 
 
 ### Co-Pilot mode
 
-To run fzy Agent in copilot mode, simply set the copilot-mode flag in your yaml config to `"true"`
+To run fzy Report Agent in copilot mode, simply set the copilot-mode flag in your yaml config to `"true"`
 
 -----
 ## Tips for better research outcomes
@@ -137,7 +137,7 @@ When resources are limited, **optimize by fine-tuning smaller models** on your s
 
 #### [Tip #4] 🈯 If you are running in a language other than English 🈲
 
-If you are running fzy Agent in a language other than English, no problem, just make sure to provide a language flag to the agents to perform research in your preferred language. Note that we have not extensively studied running fzy Agent in other languages, so be sure to report any problems you encounter.
+If you are running fzy Report Agent in a language other than English, no problem, just make sure to provide a language flag to the agents to perform research in your preferred language. Note that we have not extensively studied running fzy Report Agent in other languages, so be sure to report any problems you encounter.
 
 For example, if you are running in Chinese set the language in the yaml:
 
@@ -162,10 +162,10 @@ If you would like to get in touch, feel free to reach out to [sschmi46@jhu.edu](
 ## Reference / Bibtex
 
 
-### fzy Agent
+### fzy Report Agent
 ```bibtex
 @misc{schmidgall2025agentlaboratoryusingllm,
-      title={fzy Agent: Using LLM Agents as Research Assistants}, 
+      title={fzy Report Agent: Using LLM Agents as Research Assistants}, 
       author={Samuel Schmidgall and Yusheng Su and Ze Wang and Ximeng Sun and Jialian Wu and Xiaodong Yu and Jiang Liu and Zicheng Liu and Emad Barsoum},
       year={2025},
       eprint={2501.04227},

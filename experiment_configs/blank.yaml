@@ -1,0 +1,21 @@
+# 空白模板配置
+# 这是一个最基础的配置，您可以根据需求自由定制
+
+language: 中文
+llm-backend: o4-mini-yunwu
+lit-review-backend: o4-mini-yunwu
+num-papers-lit-review: 5
+agentrxiv-papers: 5
+num-papers-to-write: 1
+mlesolver-max-steps: 3
+datasolver-max-steps: 3
+papersolver-max-steps: 1
+copilot-mode: true
+compile-latex: false
+parallel-labs: false
+lab-index: 1
+load-existing: false
+except-if-fail: false
+
+# 任务备注部分可以根据需要添加
+task-notes: {} 

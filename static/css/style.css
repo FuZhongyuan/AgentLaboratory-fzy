@@ -21,16 +21,21 @@ body {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     margin-bottom: 20px;
     border: none;
+    transition: all 0.3s ease;
 }
 
 .card-header {
     background-color: #fff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    padding: 15px 20px;
+    padding: 0.75rem 1.25rem;
 }
 
 .card-body {
     padding: 20px;
+}
+
+.card-title {
+    margin-bottom: 0;
 }
 
 /* 按钮样式 */
@@ -224,5 +229,79 @@ textarea.form-control {
     .modal-dialog.modal-lg {
         max-width: 90%;
         margin: 1rem auto;
+    }
+}
+
+/* 研究模态框样式 */
+.modal-xl {
+    max-width: 1140px;
+}
+
+/* 模板选择卡片样式 */
+#template-selection .btn {
+    transition: all 0.3s ease;
+    border-width: 2px;
+}
+
+#template-selection .btn-check:checked + .btn {
+    border-color: #0d6efd;
+    background-color: rgba(13, 110, 253, 0.1);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* 按钮组样式 */
+.btn-group .btn-check:checked + .btn-outline-primary {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+/* 输入框组样式 */
+.input-group-text {
+    background-color: #f8f9fa;
+}
+
+.input-group-text i {
+    width: 1rem;
+    text-align: center;
+}
+
+/* 功能开关按钮样式 */
+#btn-copilot, #btn-latex {
+    transition: all 0.3s ease;
+}
+
+/* 任务备注标签页样式 */
+#task-notes-tabs {
+    border-bottom: 1px solid #dee2e6;
+}
+
+#task-notes-tabs .nav-link {
+    border: none;
+    padding: 0.5rem 1rem;
+    margin-right: 0.25rem;
+    border-radius: 0.25rem 0.25rem 0 0;
+    color: #495057;
+}
+
+#task-notes-tabs .nav-link.active {
+    border-bottom: 2px solid #0d6efd;
+    color: #0d6efd;
+    background-color: transparent;
+}
+
+/* 研究主题输入框样式 */
+#research-topic {
+    font-size: 1.1rem;
+    padding: 0.75rem 1rem;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .modal-xl {
+        max-width: 95%;
+    }
+    
+    #template-selection .row {
+        flex-direction: column;
     }
 } 

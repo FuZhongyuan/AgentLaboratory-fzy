@@ -130,7 +130,7 @@ function initConfigurationFeatures() {
                 customSection.classList.remove('d-none');
                 
                 // 加载选中的模板到自定义表单
-                const selectedTemplate = document.getElementById('config-template').value;
+                const selectedTemplate = document.querySelector('input[name="template-option"]:checked').value;
                 fetchConfigTemplate(selectedTemplate);
             }
         });
@@ -144,19 +144,80 @@ function initConfigurationFeatures() {
         });
     }
     
-    // 处理配置模板选择变更
-    const configTemplateSelect = document.getElementById('config-template');
-    if (configTemplateSelect) {
-        configTemplateSelect.addEventListener('change', function() {
-            const selectedTemplate = this.value;
-            // 如果当前是"使用模板作为基础并自定义"模式，则加载模板到表单
-            if (useTemplateCustomRadio && useTemplateCustomRadio.checked) {
-                fetchConfigTemplate(selectedTemplate);
+    // 处理模板选择变更
+    const templateOptions = document.querySelectorAll('input[name="template-option"]');
+    if (templateOptions.length > 0) {
+        templateOptions.forEach(option => {
+            option.addEventListener('change', function() {
+                // 如果当前是"使用模板作为基础并自定义"模式，则加载模板到表单
+                if (useTemplateCustomRadio && useTemplateCustomRadio.checked) {
+                    fetchConfigTemplate(this.value);
+                }
+            });
+        });
+    }
+    
+    // 语言选择按钮组
+    const langOptions = document.querySelectorAll('input[name="language-option"]');
+    if (langOptions.length > 0) {
+        langOptions.forEach(option => {
+            option.addEventListener('change', function() {
+                // 更新隐藏字段或直接使用选中值
+            });
+        });
+    }
+    
+    // LLM后端选择按钮组
+    const llmOptions = document.querySelectorAll('input[name="llm-option"]');
+    if (llmOptions.length > 0) {
+        llmOptions.forEach(option => {
+            option.addEventListener('change', function() {
+                // 更新隐藏字段或直接使用选中值
+            });
+        });
+    }
+    
+    // 功能开关按钮
+    const btnCopilot = document.getElementById('btn-copilot');
+    const btnLatex = document.getElementById('btn-latex');
+    const copilotModeInput = document.getElementById('copilot-mode');
+    const compileLatexInput = document.getElementById('compile-latex');
+    
+    if (btnCopilot) {
+        btnCopilot.addEventListener('click', function() {
+            const isActive = this.getAttribute('data-active') === 'true';
+            if (isActive) {
+                this.setAttribute('data-active', 'false');
+                this.classList.remove('btn-outline-success');
+                this.classList.add('btn-outline-secondary');
+                if (copilotModeInput) copilotModeInput.value = 'false';
+            } else {
+                this.setAttribute('data-active', 'true');
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-outline-success');
+                if (copilotModeInput) copilotModeInput.value = 'true';
             }
         });
     }
     
-    // 切换高级选项的显示状态
+    if (btnLatex) {
+        btnLatex.addEventListener('click', function() {
+            const isActive = this.getAttribute('data-active') === 'true';
+            if (isActive) {
+                this.setAttribute('data-active', 'false');
+                this.classList.remove('btn-outline-success');
+                this.classList.add('btn-outline-secondary');
+                if (compileLatexInput) compileLatexInput.value = 'false';
+            } else {
+                this.setAttribute('data-active', 'true');
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-outline-success');
+                if (compileLatexInput) compileLatexInput.value = 'true';
+            }
+        });
+    }
+    
+    // 切换任务备注设置的显示状态
     const toggleAdvancedBtn = document.getElementById('toggle-advanced-options');
     const advancedOptions = document.getElementById('advanced-options');
     
@@ -166,17 +227,20 @@ function initConfigurationFeatures() {
             
             if (isHidden) {
                 advancedOptions.classList.remove('d-none');
-                this.innerHTML = '隐藏任务备注设置 <i class="bi bi-chevron-up"></i>';
+                this.innerHTML = '<i class="bi bi-chevron-up"></i>';
             } else {
                 advancedOptions.classList.add('d-none');
-                this.innerHTML = '显示任务备注设置 <i class="bi bi-chevron-down"></i>';
+                this.innerHTML = '<i class="bi bi-chevron-down"></i>';
             }
         });
     }
     
     // 初始加载默认配置
-    if (configTemplateSelect && useTemplateCustomRadio && useTemplateCustomRadio.checked) {
-        fetchConfigTemplate(configTemplateSelect.value);
+    if (templateOptions.length > 0) {
+        const defaultTemplate = document.querySelector('input[name="template-option"]:checked');
+        if (defaultTemplate && useTemplateCustomRadio && useTemplateCustomRadio.checked) {
+            fetchConfigTemplate(defaultTemplate.value);
+        }
     }
 }
 
@@ -408,9 +472,15 @@ function fetchConfigTemplate(templateName) {
  * @param {object} config - 配置数据对象
  */
 function populateConfigForm(config) {
-    // 填充基本配置
-    if (document.getElementById('language-select')) {
-        document.getElementById('language-select').value = config.language || '中文';
+    // 填充语言选择
+    const langZh = document.getElementById('lang-zh');
+    const langEn = document.getElementById('lang-en');
+    if (langZh && langEn) {
+        if (config.language === 'English') {
+            langEn.checked = true;
+        } else {
+            langZh.checked = true;
+        }
     }
     
     // 清空API密钥字段，不自动填充API密钥
@@ -418,10 +488,18 @@ function populateConfigForm(config) {
         document.getElementById('api-key').value = '';
     }
     
-    if (document.getElementById('llm-backend')) {
-        document.getElementById('llm-backend').value = config['llm-backend'] || 'o4-mini-yunwu';
+    // 填充LLM后端选择
+    const llmO4 = document.getElementById('llm-o4');
+    const llmO3 = document.getElementById('llm-o3');
+    if (llmO4 && llmO3) {
+        if (config['llm-backend'] === 'o3-mini') {
+            llmO3.checked = true;
+        } else {
+            llmO4.checked = true;
+        }
     }
     
+    // 填充数字输入框
     if (document.getElementById('lit-review-papers')) {
         document.getElementById('lit-review-papers').value = config['num-papers-lit-review'] || 5;
     }
@@ -446,13 +524,38 @@ function populateConfigForm(config) {
         document.getElementById('papersolver-steps').value = config['papersolver-max-steps'] || 1;
     }
     
-    // 填充开关配置
-    if (document.getElementById('copilot-mode')) {
-        document.getElementById('copilot-mode').checked = config['copilot-mode'] !== false;
+    // 填充功能开关按钮
+    const btnCopilot = document.getElementById('btn-copilot');
+    const btnLatex = document.getElementById('btn-latex');
+    const copilotModeInput = document.getElementById('copilot-mode');
+    const compileLatexInput = document.getElementById('compile-latex');
+    
+    if (btnCopilot && copilotModeInput) {
+        const copilotEnabled = config['copilot-mode'] !== false;
+        btnCopilot.setAttribute('data-active', copilotEnabled.toString());
+        copilotModeInput.value = copilotEnabled.toString();
+        
+        if (copilotEnabled) {
+            btnCopilot.classList.remove('btn-outline-secondary');
+            btnCopilot.classList.add('btn-outline-success');
+        } else {
+            btnCopilot.classList.remove('btn-outline-success');
+            btnCopilot.classList.add('btn-outline-secondary');
+        }
     }
     
-    if (document.getElementById('compile-latex')) {
-        document.getElementById('compile-latex').checked = config['compile-latex'] === true;
+    if (btnLatex && compileLatexInput) {
+        const latexEnabled = config['compile-latex'] === true;
+        btnLatex.setAttribute('data-active', latexEnabled.toString());
+        compileLatexInput.value = latexEnabled.toString();
+        
+        if (latexEnabled) {
+            btnLatex.classList.remove('btn-outline-secondary');
+            btnLatex.classList.add('btn-outline-success');
+        } else {
+            btnLatex.classList.remove('btn-outline-success');
+            btnLatex.classList.add('btn-outline-secondary');
+        }
     }
     
     // 填充任务备注
@@ -466,7 +569,8 @@ function populateConfigForm(config) {
         {id: 'data-preparation-notes', key: 'data-preparation'},
         {id: 'running-experiments-notes', key: 'running-experiments'},
         {id: 'results-interpretation-notes', key: 'results-interpretation'},
-        {id: 'report-writing-notes', key: 'report-writing'}
+        {id: 'report-writing-notes', key: 'report-writing'},
+        {id: 'report-translation-notes', key: 'report-translation'}
     ];
     
     // 检查并填充每个备注字段
@@ -477,14 +581,6 @@ function populateConfigForm(config) {
             if (notes.length > 0) {
                 element.value = notes.join('\n');
                 hasNotes = true;
-                
-                // 如果有备注，自动展开对应的折叠面板
-                const collapseId = field.id.replace('-notes', 'Collapse');
-                const collapseElement = document.getElementById(collapseId);
-                if (collapseElement) {
-                    const bsCollapse = new bootstrap.Collapse(collapseElement, {toggle: false});
-                    bsCollapse.show();
-                }
             } else {
                 element.value = '';
             }
@@ -498,7 +594,7 @@ function populateConfigForm(config) {
         
         if (advancedOptions && toggleAdvancedBtn) {
             advancedOptions.classList.remove('d-none');
-            toggleAdvancedBtn.innerHTML = '隐藏任务备注设置 <i class="bi bi-chevron-up"></i>';
+            toggleAdvancedBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
         }
     }
 }
@@ -509,22 +605,36 @@ function populateConfigForm(config) {
  */
 function collectCustomConfig() {
     const config = {
-        'language': document.getElementById('language-select').value,
-        'llm-backend': document.getElementById('llm-backend').value,
-        'lit-review-backend': document.getElementById('llm-backend').value,
-        'num-papers-lit-review': parseInt(document.getElementById('lit-review-papers').value) || 5,
-        'agentrxiv-papers': parseInt(document.getElementById('agentrxiv-papers').value) || 5,
-        'num-papers-to-write': parseInt(document.getElementById('papers-to-write').value) || 1,
-        'mlesolver-max-steps': parseInt(document.getElementById('mlesolver-steps').value) || 3,
-        'datasolver-max-steps': parseInt(document.getElementById('datasolver-steps').value) || 3,
-        'papersolver-max-steps': parseInt(document.getElementById('papersolver-steps').value) || 1,
-        'copilot-mode': document.getElementById('copilot-mode').checked,
-        'compile-latex': document.getElementById('compile-latex').checked,
         'parallel-labs': false,
         'lab-index': 1,
         'load-existing': false,
         'except-if-fail': false
     };
+    
+    // 获取语言设置
+    const langEn = document.getElementById('lang-en');
+    config['language'] = langEn && langEn.checked ? 'English' : '中文';
+    
+    // 获取LLM后端设置
+    const llmO3 = document.getElementById('llm-o3');
+    const llmBackend = llmO3 && llmO3.checked ? 'o3-mini' : 'o4-mini-yunwu';
+    config['llm-backend'] = llmBackend;
+    config['lit-review-backend'] = llmBackend;
+    
+    // 获取数字输入值
+    config['num-papers-lit-review'] = parseInt(document.getElementById('lit-review-papers').value) || 5;
+    config['agentrxiv-papers'] = parseInt(document.getElementById('agentrxiv-papers').value) || 5;
+    config['num-papers-to-write'] = parseInt(document.getElementById('papers-to-write').value) || 1;
+    config['mlesolver-max-steps'] = parseInt(document.getElementById('mlesolver-steps').value) || 3;
+    config['datasolver-max-steps'] = parseInt(document.getElementById('datasolver-steps').value) || 3;
+    config['papersolver-max-steps'] = parseInt(document.getElementById('papersolver-steps').value) || 1;
+    
+    // 获取功能开关设置
+    const copilotModeInput = document.getElementById('copilot-mode');
+    const compileLatexInput = document.getElementById('compile-latex');
+    
+    config['copilot-mode'] = copilotModeInput && copilotModeInput.value === 'true';
+    config['compile-latex'] = compileLatexInput && compileLatexInput.value === 'true';
     
     // 添加API密钥（如果用户提供了）
     const apiKey = document.getElementById('api-key').value;
@@ -571,6 +681,12 @@ function collectCustomConfig() {
         config['task-notes']['report-writing'] = reportWritingNotes.split('\n').filter(note => note.trim() !== '');
     }
     
+    // 处理报告翻译备注
+    const reportTranslationNotes = document.getElementById('report-translation-notes').value;
+    if (reportTranslationNotes) {
+        config['task-notes']['report-translation'] = reportTranslationNotes.split('\n').filter(note => note.trim() !== '');
+    }
+    
     return config;
 }
 
@@ -584,48 +700,45 @@ function startResearch(topic, options = {}) {
     // 处理配置选项
     const useTemplateCustom = document.getElementById('use-template-custom').checked;
     const useCustom = document.getElementById('use-custom').checked;
-    let configData = {};
+    let requestData = {
+        topic: topic,
+        ...options
+    };
     
     if (useTemplateCustom) {
-        // 使用模板作为基础并自定义
-        configData = {
-            template_custom_config: collectCustomConfig()
-        };
+        // 获取选中的模板
+        const selectedTemplate = document.querySelector('input[name="template-option"]:checked').value;
+        
+        // 收集自定义配置
+        const customConfig = collectCustomConfig();
+        
+        // 添加模板信息
+        if (selectedTemplate === 'blank.yaml') {
+            // 如果是空白模板，直接使用自定义配置
+            requestData.custom_config = customConfig;
+        } else {
+            // 使用模板作为基础并自定义
+            requestData.config_template = selectedTemplate;
+            requestData.template_custom_config = customConfig;
+        }
     } else if (useCustom) {
-        // 使用自定义配置
-        configData = {
-            custom_config: collectCustomConfig()
-        };
+        // 完全自定义配置
+        requestData.custom_config = collectCustomConfig();
     }
     
-    return new Promise((resolve, reject) => {
-        fetch('/api/start_research', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                topic: topic,
-                ...configData,
-                ...options
-            })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('服务器响应错误');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                resolve(data);
-            } else {
-                reject(data.error || '未知错误');
-            }
-        })
-        .catch(error => {
-            reject(error.message || '请求失败');
-        });
+    // 发送请求
+    return fetch('/api/start_research', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('启动研究任务失败');
+        }
+        return response.json();
     });
 }
 

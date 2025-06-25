@@ -1,9 +1,9 @@
 # 开启用户交互模式
 copilot-mode: False
 
-# 研究主题：CNN结构综述与CIFAR10分类实验分析
-research-topic: "RNN结构综述与实验对比分析"
-research-dir-path: "RNN_research_dir"
+# 研究主题：seq2seq结构综述与实验对比分析
+research-topic: "seq2seq结构综述与实验对比分析"
+research-dir-path: "seq2seq_research_dir"
 
 # 使用OpenAI API，默认设置即可
 api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
