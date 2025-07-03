@@ -7,6 +7,7 @@ lit-review-backend: o4-mini-yunwu
 num-papers-lit-review: 5
 agentrxiv-papers: 5
 num-papers-to-write: 1
+paper-word-count: 4000
 mlesolver-max-steps: 3
 datasolver-max-steps: 3
 papersolver-max-steps: 1

@@ -81,54 +81,12 @@
                         
                         <!-- 模板选择区域 -->
                         <div class="mb-4" id="template-selection">
-                            <label for="config-template" class="form-label fs-5">选择配置模板</label>
-                            <div class="row row-cols-1 row-cols-md-3 g-3 mb-3">
-                                <!-- 空白模板 -->
-                                <div class="col">
-                                    <input type="radio" class="btn-check" name="template-option" id="template-blank" value="blank.yaml" checked>
-                                    <label class="btn btn-outline-secondary h-100 w-100 d-flex flex-column align-items-center justify-content-center p-4" for="template-blank">
-                                        <i class="bi bi-file-earmark-plus fs-1 mb-2"></i>
-                                        <span class="fw-bold">空白模板</span>
-                                        <span class="small text-muted mt-2">完全从零开始配置</span>
-                                    </label>
-                                </div>
-                                <!-- CNN模板 -->
-                                <div class="col">
-                                    <input type="radio" class="btn-check" name="template-option" id="template-cnn" value="CIFAR_CNN.yaml">
-                                    <label class="btn btn-outline-secondary h-100 w-100 d-flex flex-column align-items-center justify-content-center p-4" for="template-cnn">
-                                        <i class="bi bi-grid-3x3 fs-1 mb-2"></i>
-                                        <span class="fw-bold">CNN图像分类</span>
-                                        <span class="small text-muted mt-2">适用于图像识别任务</span>
-                                    </label>
-                                </div>
-                                <!-- RNN模板 -->
-                                <div class="col">
-                                    <input type="radio" class="btn-check" name="template-option" id="template-rnn" value="RNN.yaml">
-                                    <label class="btn btn-outline-secondary h-100 w-100 d-flex flex-column align-items-center justify-content-center p-4" for="template-rnn">
-                                        <i class="bi bi-arrow-repeat fs-1 mb-2"></i>
-                                        <span class="fw-bold">RNN序列分析</span>
-                                        <span class="small text-muted mt-2">适用于时序数据处理</span>
-                                    </label>
-                                </div>
-                                <!-- seq2seq模板 -->
-                                <div class="col">
-                                    <input type="radio" class="btn-check" name="template-option" id="template-seq2seq" value="seq2seq.yaml">
-                                    <label class="btn btn-outline-secondary h-100 w-100 d-flex flex-column align-items-center justify-content-center p-4" for="template-seq2seq">
-                                        <i class="bi bi-translate fs-1 mb-2"></i>
-                                        <span class="fw-bold">seq2seq序列转换</span>
-                                        <span class="small text-muted mt-2">适用于机器翻译等任务</span>
-                                    </label>
-                                </div>
-                                <!-- GAN模板 -->
-                                <div class="col">
-                                    <input type="radio" class="btn-check" name="template-option" id="template-gan" value="GAN.yaml">
-                                    <label class="btn btn-outline-secondary h-100 w-100 d-flex flex-column align-items-center justify-content-center p-4" for="template-gan">
-                                        <i class="bi bi-palette fs-1 mb-2"></i>
-                                        <span class="fw-bold">GAN生成网络</span>
-                                        <span class="small text-muted mt-2">适用于生成式AI任务</span>
-                                    </label>
-                                </div>
-                            </div>
+                            <label for="template-select" class="form-label fs-5">预定义模板</label>
+                            <select class="form-select form-select-lg" id="template-select">
+                                {% for tpl in config_templates %}
+                                <option value="{{ tpl }}" {% if loop.first %}selected{% endif %}>{{ tpl | replace('.yaml', '') }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         
                         <!-- 自定义配置区域 - 使用卡片布局 -->
@@ -189,6 +147,20 @@
                                                 <input type="hidden" id="copilot-mode" value="true">
                                                 <input type="hidden" id="compile-latex" value="false">
                                             </div>
+
+                                            
+                                            <!-- 本地PDF选择 -->
+                                            <div class="card border border-1 mt-4">
+                                                <div class="card-header bg-light">
+                                                    <h6 class="card-title mb-0">选择本地PDF进行分析</h6>
+                                                </div>
+                                                <div class="card-body" id="pdf-selection">
+                                                    <div id="pdf-list" class="mb-2 text-muted">Loading...</div>
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" id="open-upload-page">
+                                                        <i class="bi bi-upload"></i> 上传新的PDF
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -224,6 +196,62 @@
                                                 <div class="input-group">
                                                     <span class="input-group-text"><i class="bi bi-file-earmark-text"></i></span>
                                                     <input type="number" class="form-control" id="papers-to-write" value="1" min="1" max="40">
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 子任务选择 -->
+                                            <div class="mb-3">
+                                                <label class="form-label">选择需要执行的子任务（未勾选的子任务仅保存配置，不会被执行）</label>
+                                                <div class="row g-2">
+                                                    <!-- 文献综述 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-lit-review" value="literature review" checked>
+                                                        <label class="form-check-label" for="subtask-lit-review">文献综述</label>
+                                                    </div>
+                                                    <!-- 计划制定 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-plan" value="plan formulation" checked>
+                                                        <label class="form-check-label" for="subtask-plan">计划制定</label>
+                                                    </div>
+                                                    <!-- 数据准备 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-data" value="data preparation" checked>
+                                                        <label class="form-check-label" for="subtask-data">数据准备</label>
+                                                    </div>
+                                                    <!-- 运行实验 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-exp" value="running experiments" checked>
+                                                        <label class="form-check-label" for="subtask-exp">运行实验</label>
+                                                    </div>
+                                                    <!-- 结果分析 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-result" value="results interpretation" checked>
+                                                        <label class="form-check-label" for="subtask-result">结果分析</label>
+                                                    </div>
+                                                    <!-- 报告写作 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-report" value="report writing" checked>
+                                                        <label class="form-check-label" for="subtask-report">报告写作</label>
+                                                    </div>
+                                                    <!-- 报告翻译 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-translation" value="report translation" checked>
+                                                        <label class="form-check-label" for="subtask-translation">报告翻译</label>
+                                                    </div>
+                                                    <!-- 报告润色 -->
+                                                    <div class="col-6 form-check">
+                                                        <input class="form-check-input subtask-checkbox" type="checkbox" id="subtask-refine" value="report refinement" checked>
+                                                        <label class="form-check-label" for="subtask-refine">报告润色</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 目标论文字数设置 -->
+                                            <div class="mb-3">
+                                                <label class="form-label">目标论文字数</label>
+                                                <div class="input-group">
+                                                    <span class="input-group-text"><i class="bi bi-sort-numeric-up"></i></span>
+                                                    <input type="number" class="form-control" id="paper-word-count" value="4000" min="500" step="100">
                                                 </div>
                                             </div>
                                             

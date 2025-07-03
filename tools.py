@@ -316,9 +316,23 @@ class ArxivSearch:
                 # 尝试获取论文信息
                 paper = next(arxiv.Client().results(arxiv.Search(id_list=[query])))
                 
-                # 尝试下载 PDF
+                # -----------------------------
+                # 新增逻辑：将下载的 PDF 保存到用户专属 uploads 目录
+                # -----------------------------
+                # 获取用户工作目录（若在 execute_code 中会自动注入 CURRENT_OUTPUT_DIR）
+                user_upload_dir = os.path.join(get_user_dir(), 'uploads')
+                os.makedirs(user_upload_dir, exist_ok=True)
+
+                # 生成目标 PDF 路径，使用查询 ID 作为文件名，避免重复
+                pdf_path = os.path.join(user_upload_dir, f"{query}.pdf")
+
+                # 若已存在同名文件，先删除，确保下载的是最新版本
+                if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+
+                # 尝试下载 PDF 至指定路径
                 try:
-                    paper.download_pdf(filename="downloaded-paper.pdf")
+                    paper.download_pdf(filename=pdf_path)
                 except Exception as e:
                     # 如果 PDF 下载失败，增加重试次数并等待
                     retry_count += 1
@@ -330,11 +344,11 @@ class ArxivSearch:
                 
                 # 尝试读取 PDF
                 try:
-                    reader = PdfReader('downloaded-paper.pdf')
+                    reader = PdfReader(pdf_path)
                 except Exception as e:
                     # 如果 PDF 读取失败，删除文件，增加重试次数并等待
-                    if os.path.exists("downloaded-paper.pdf"):
-                        os.remove("downloaded-paper.pdf")
+                    if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                        os.remove(pdf_path)
                     retry_count += 1
                     wait_time = backoff_factor * retry_count
                     print(f"PDF 读取失败 (尝试 {retry_count}/{max_retries}): {str(e)}")
@@ -349,8 +363,8 @@ class ArxivSearch:
                     try:
                         text = page.extract_text()
                     except Exception as e:
-                        if os.path.exists("downloaded-paper.pdf"):
-                            os.remove("downloaded-paper.pdf")
+                        if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                            os.remove(pdf_path)
                         time.sleep(2.0)
                         return f"提取文本失败: {str(e)}"
 
@@ -359,9 +373,7 @@ class ArxivSearch:
                     pdf_text += text
                     pdf_text += "\n"
                 
-                # 成功处理，删除文件并返回结果
-                if os.path.exists("downloaded-paper.pdf"):
-                    os.remove("downloaded-paper.pdf")
+                # 成功处理后，不再删除 pdf_path，保留供用户查看
                 time.sleep(2.0)
                 return pdf_text[:MAX_LEN]
                 
@@ -373,8 +385,8 @@ class ArxivSearch:
                 print(f"等待 {wait_time} 秒后重试...")
                 time.sleep(wait_time)
                 # 确保没有残留的 PDF 文件
-                if os.path.exists("downloaded-paper.pdf"):
-                    os.remove("downloaded-paper.pdf")
+                if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                    os.remove(pdf_path)
             
             except Exception as e:
                 # 处理其他所有异常
@@ -384,8 +396,8 @@ class ArxivSearch:
                 print(f"等待 {wait_time} 秒后重试...")
                 time.sleep(wait_time)
                 # 确保没有残留的 PDF 文件
-                if os.path.exists("downloaded-paper.pdf"):
-                    os.remove("downloaded-paper.pdf")
+                if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                    os.remove(pdf_path)
         
         # 所有重试都失败
         return None

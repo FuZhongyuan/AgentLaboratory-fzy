@@ -6,7 +6,7 @@ research-topic: "GAN结构综述与实验对比分析"
 research-dir-path: "GAN_research_dir"
 
 # 使用OpenAI API，默认设置即可
-api-key: "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+api-key: "your_key"
 
 # 使用最新模型处理Latex论文写作与图生成任务
 # llm-backend: "deepseek-reasoner"
@@ -21,6 +21,7 @@ language: "English"
 num-papers-lit-review: 10
 agentrxiv-papers: 10
 num-papers-to-write: 1
+paper-word-count: 4000
 
 # 不需要并行Agent
 parallel-labs: False
@@ -84,5 +85,5 @@ task-notes:
     - '若使用DCGAN作为加分项，需在报告中单独标明其结构调整与生成效果提升。'
 
   report-translation:
-    - '请在保持公式与引用不变的前提下，将整份报告译为中文，并确保术语准确。'
+    - '请在保持公式与引用不变的前提下，将整份报告进行翻译，并确保术语准确。'
   

@@ -32,7 +32,7 @@ except ImportError:
     DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+app.config['SECRET_KEY'] = "your_key"
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['USER_DATA_FOLDER'] = 'user_data/'  # 用户数据主目录
 app.config['RESEARCH_CONFIG_FOLDER'] = 'research_configs/'  # 研究配置目录
@@ -465,6 +465,10 @@ def run_research_task(task_id, user_id, topic, config_path):
         research_dir = os.path.join(user_dir, f"research_{task_id}")
         os.makedirs(research_dir, exist_ok=True)
         
+        # === 确保后续工具把文件保存到当前任务目录 ===
+        os.environ["CURRENT_OUTPUT_DIR"] = research_dir
+        # -------------------------------------------
+        
         # 创建研究相关目录
         os.makedirs(os.path.join(research_dir, "src"), exist_ok=True)
         os.makedirs(os.path.join(research_dir, "tex"), exist_ok=True)
@@ -502,7 +506,7 @@ def run_research_task(task_id, user_id, topic, config_path):
         # 获取OpenAI API密钥（从环境变量或配置中）
         api_key = config.get('api-key')
         if not api_key or api_key == 'OPENAI-API-KEY-HERE':
-            api_key = os.environ.get('OPENAI_API_KEY', "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob")
+            api_key = os.environ.get('OPENAI_API_KEY', "your_key")
         
         # 创建工作流实例的基本参数
         workflow_params = {
@@ -530,13 +534,18 @@ def run_research_task(task_id, user_id, topic, config_path):
             ('mlesolver-max-steps', 'mlesolver_max_steps', 'DEFAULT_MLESOLVER_MAX_STEPS'),
             ('datasolver-max-steps', 'datasolver_max_steps', 'DEFAULT_DATASOLVER_MAX_STEPS'),
             ('papersolver-max-steps', 'papersolver_max_steps', 'DEFAULT_PAPERSOLVER_MAX_STEPS'),
-            ('lab-index', 'lab_index', 'DEFAULT_LAB_INDEX')
+            ('paper-word-count', 'paper_word_count', 'DEFAULT_PAPER_WORD_COUNT'),
+            ('lab-index', 'lab_index', 'DEFAULT_LAB_INDEX'),
         ]
         
         for config_key, param_key, default_key in param_mappings:
             value = get_param(config_key, param_key, default_key)
             if value is not None:
                 workflow_params[param_key] = value
+        
+        # 处理用户选择要执行的子任务
+        if 'enabled-subtasks' in config:
+            workflow_params['enabled_subtasks'] = config['enabled-subtasks']
         
         # 处理任务笔记
         if 'task-notes' in config:
@@ -594,6 +603,25 @@ def run_research_task(task_id, user_id, topic, config_path):
             lab_index = workflow_params.get('lab_index', 0)
             ai_lab_repo.GLOBAL_AGENTRXIV = AgentRxiv(lab_index=lab_index,model=llm_backend,api_key=api_key)
             print(f"为任务 {task_id} 初始化AgentRxiv")
+        
+        # -------- 处理用户选择的本地 PDF 文件 --------
+        pdf_paths_config = config.get('pdf-paths', [])
+        if pdf_paths_config:
+            task_upload_dir = os.path.join(research_dir, "uploads")
+            os.makedirs(task_upload_dir, exist_ok=True)
+            new_pdf_paths = []
+            for origin_path in pdf_paths_config:
+                try:
+                    if os.path.exists(origin_path):
+                        dst_path = os.path.join(task_upload_dir, os.path.basename(origin_path))
+                        if not os.path.exists(dst_path):
+                            shutil.copy(origin_path, dst_path)
+                        new_pdf_paths.append(os.path.abspath(dst_path))
+                except Exception as copy_err:
+                    print(f"[PDF COPY] 无法复制 {origin_path}: {copy_err}")
+            if new_pdf_paths:
+                workflow_params['pdf_paths'] = new_pdf_paths
+        # -------------------------------------------
         
         # 创建工作流实例并执行研究
         workflow = LaboratoryWorkflow(**workflow_params)
@@ -760,6 +788,8 @@ def start_research():
     custom_config = data.get('custom_config')
     template_custom_config = data.get('template_custom_config')
     paper_id = data.get('paper_id')  # 可选，用于基于特定论文的研究
+    # 前端可通过 enabled_subtasks 或 enabled-subtasks 提交需要执行的子任务列表
+    enabled_subtasks = data.get('enabled_subtasks') or data.get('enabled-subtasks')
     
     if not topic:
         return jsonify({'error': 'Missing research topic'}), 400
@@ -784,6 +814,19 @@ def start_research():
             # 设置研究主题
             config['research-topic'] = topic
             
+            # 如果用户指定了要执行的子任务，则写入配置文件
+            if enabled_subtasks is not None:
+                # 保证为列表格式，前端可能传字符串或列表
+                if isinstance(enabled_subtasks, str):
+                    try:
+                        # 允许逗号分隔的字符串
+                        enabled_list = [s.strip() for s in enabled_subtasks.split(',') if s.strip()]
+                    except Exception:
+                        enabled_list = [enabled_subtasks]
+                    config['enabled-subtasks'] = enabled_list
+                else:
+                    config['enabled-subtasks'] = enabled_subtasks
+            
             # 确保API密钥存在
             if 'api-key' not in config or not config['api-key'] or config['api-key'] == 'OPENAI-API-KEY-HERE':
                 # 尝试从环境变量获取API密钥
@@ -793,7 +836,7 @@ def start_research():
                     config['api-key'] = env_api_key
                 else:
                     print(f"未找到API密钥，使用默认密钥")
-                    config['api-key'] = "sk-VdXR5cG1MtxNmgm9yosUgAQvy1Xcdx5U8bOOWfRQA0Rr9Cob"
+                    config['api-key'] = "your_key"
             else:
                 print(f"使用用户提供的API密钥")
             
@@ -1182,6 +1225,7 @@ def load_config_from_yaml(config_file):
             'DEFAULT_MLESOLVER_MAX_STEPS': ('mlesolver-max-steps', 3),
             'DEFAULT_DATASOLVER_MAX_STEPS': ('datasolver-max-steps', 3),
             'DEFAULT_PAPERSOLVER_MAX_STEPS': ('papersolver-max-steps', 5),
+            'DEFAULT_PAPER_WORD_COUNT': ('paper-word-count', 4000),
             'DEFAULT_LAB_INDEX': ('lab-index', 0),
             'DEFAULT_COPILOT_MODE': config.get('copilot-mode', False),
             'DEFAULT_AGENTRXIV': config.get('agentRxiv', False),
@@ -1410,6 +1454,61 @@ def continue_research_task(task_id, user_id, state_path, phase):
         error_msg = f"继续研究任务时出错: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         update_task_status(task_id, 'failed', error_message=error_msg)
+
+# -------------------- PDF 管理 API --------------------
+@app.route('/api/user_pdfs', methods=['GET'])
+def api_user_pdfs():
+    """返回当前用户上传的PDF列表，用于前端勾选加入配置。"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'User session not found'}), 401
+    papers = Paper.query.filter_by(user_id=user_id).all()
+    pdfs = []
+    for p in papers:
+        user_uploads = os.path.join(app.config['USER_DATA_FOLDER'], user_id, 'uploads')
+        abs_path = os.path.abspath(os.path.join(user_uploads, p.filename))
+        pdfs.append({'id': p.id, 'filename': p.filename, 'path': abs_path})
+    return jsonify({'pdfs': pdfs})
+
+@app.route('/api/delete_pdf/<int:paper_id>', methods=['DELETE'])
+def api_delete_pdf(paper_id):
+    """删除指定PDF及记录。"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'User session not found'}), 401
+    paper = Paper.query.get(paper_id)
+    if not paper or paper.user_id != user_id:
+        return jsonify({'error': 'PDF not found'}), 404
+    # 删除文件
+    file_path = os.path.join(app.config['USER_DATA_FOLDER'], user_id, 'uploads', paper.filename)
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        print(f"[delete_pdf] remove file error: {e}")
+    # 删除数据库记录
+    db.session.delete(paper)
+    db.session.commit()
+    return jsonify({'success': True})
+
+# -------------------- 全局模板注入 --------------------
+@app.context_processor
+def inject_config_templates():
+    """
+    将 experiment_configs 目录下的所有 YAML 文件名称注入到每个 Jinja2 模板中，
+    使前端能够自动渲染可选的配置模板列表。
+    空白模板（blank.yaml）将被优先放在列表最前面。
+    """
+    try:
+        templates = [
+            f for f in os.listdir('experiment_configs')
+            if f.lower().endswith('.yaml')
+        ]
+        # 让 blank.yaml 永远排在第一位，其余按字母排序
+        templates = sorted(templates, key=lambda x: (x.lower() != 'blank.yaml', x.lower()))
+    except Exception:
+        templates = []
+    return dict(config_templates=templates)
 
 if __name__ == '__main__':
     # 添加命令行参数解析，整合ai_lab_repo.py的逻辑

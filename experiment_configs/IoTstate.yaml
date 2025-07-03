@@ -1,0 +1,83 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：IoT系统逻辑漏洞检测方法综述
+research-topic: "IoT系统逻辑漏洞检测方法综述"
+research-dir-path: "IoTstate_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "your_key"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "English"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+paper-word-count: 8000
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+datasolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+    - '系统调研基于模型学习的自动化方法在IoT系统安全分析中的研究现状。'
+    - '重点综述与对比传统IoT逻辑漏洞检测方法（如逆向分析、手动建模）与基于自动模型学习的新方法（如IoTStateFuzzer）。'
+    - '参考文献包括论文中提及的相关工作，如针对TLS、MQTT、BLE等协议的模型学习，以及在IoT设备上的应用案例。'
+    - '分析“行为-流量绑定（BTB）”“核心报文提取（CPE）”“增量学习”“逻辑重置”等关键创新机制。'
+
+  plan-formulation:
+    - '撰写综述论文的核心目标是评估模型学习技术在检测商用黑盒IoT系统逻辑漏洞中的有效性与通用性。'
+    - '围绕“建模挑战”“抽象粒度控制”“非确定性应对”“差分分析策略”四大核心展开剖析。'
+    - '规划论文结构为：引言、相关研究综述、模型学习方法在IoT系统中的适配与改进、漏洞类型及发现机制总结、挑战与未来方向。'
+
+  data-preparation:
+    - '选取论文中分析的六款主流IoT设备作为分析对象，整理其功能、通信协议、漏洞类型等信息形成对比表。'
+    - '使用文中给出的实验数据（如表格4与5）提取模型学习效率、漏洞类型与数量等量化指标。'
+    - '绘制对比图，如模型学习响应率、各设备发现漏洞数量、实验时间对比等图示。'
+
+  running-experiments:
+    - '本综述任务不实际运行IoTStateFuzzer，而是分析其在文献中运行表现，并引入相关研究结果辅助比较。'
+    - '引用已有实验对比，如不同设备下的状态数量、查询次数、Mediator响应比例等性能数据。'
+    - '可使用论文中的状态机图（图7、图8）以及符号映射规则辅助说明系统行为模式与漏洞形成路径。'
+
+  results-interpretation:
+    - '总结模型学习方法在不同厂商设备上检测出逻辑漏洞的能力，包括远程/本地未授权控制与信息泄露三类典型漏洞。'
+    - '对比基于状态机差分分析和手动逆向方式的优缺点，如自动化程度、漏洞覆盖率、适用范围等。'
+    - '分析IoTStateFuzzer提出的优化策略对学习效率的提升效果，如Mediator响应比例达到88%以上。'
+
+  report-writing:
+    - '撰写符合学术规范的Latex综述论文，结构建议如下：'
+    - '- 引言（背景、研究动机与意义）'
+    - '- 相关工作（模型学习在协议与系统安全中的应用）'
+    - '- 研究方法综述（IoTStateFuzzer框架与核心机制）'
+    - '- 实验总结与结果分析（设备覆盖、漏洞类型、效率对比）'
+    - '- 方法优势与局限性分析'
+    - '- 结论与未来研究方向（如更精细粒度模糊测试与自动部署）'
+    - '所有图表需使用\includegraphics引入，图注完整，统一风格。'
+
+  report-refinement:
+    - '进行Latex文档的结构优化、术语统一与语言润色。'
+    - '确保引用格式规范，编号一致，文中引用与参考文献一一对应。'
+    - '根据学术论文格式补全摘要、关键词、图表目录与参考文献条目。'
+
+  report-translation:
+    - '请在保持公式与引用不变的前提下，将整份报告进行翻译，并确保术语准确。'

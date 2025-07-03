@@ -1,0 +1,97 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：RUL预测时间序列预测模型综述与实验对比分析
+research-topic: "RUL预测时间序列预测模型综述与实验对比分析"
+research-dir-path: "RUL_TimeSeries_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "your_key"
+
+enabled-subtasks:
+- literature review
+- plan formulation
+- results interpretation
+- report writing
+- report translation
+- report refinement
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "English"
+
+# 需要自动文献综述
+# 一共检索的文献综述数量
+num-papers-lit-review: 15
+# 从文献综述数量中选择多少篇进行写作
+agentrxiv-papers: 15
+# 需要写作的论文数量
+num-papers-to-write: 1
+paper-word-count: 8000
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+datasolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+    - '系统调研RUL（Remaining Useful Life）预测在工业设备故障预警中的研究进展，聚焦时序建模方法的发展趋势。'
+    - '重点综述LSTM、GRU、Transformer、TFT（Temporal Fusion Transformer）及其在RUL预测中的核心机制与创新点。'
+    - '查阅并引用最新高质量论文（如PHM Society、IEEE TII、NeurIPS 等会议/期刊），对比不同模型在CMAPSS、XJTU-SY等标准数据集上的表现。'
+    - '可引用或绘制高质量模型结构图、输入输出流程图、性能对比图，以增强理解。'
+
+  plan-formulation:
+    - '本研究目标是梳理当前RUL预测模型的设计逻辑，构建一套基于提示词与多阶段工作流的通用设计模板。'
+    - '围绕“时序建模结构设计”“特征选择策略”“预测目标类型”“提示词对齐机制”四个维度展开规划。'
+    - '规划输出内容包括：整体工作流图（从数据预处理到模型推理）、提示词模板库（prompt template）、模块化组件说明。'
+
+  data-preparation:
+    - '重点关注PHM 2008 CMAPSS、XJTU-SY等典型数据集，分析其传感器信号分布、退化趋势、数据切分方式。'
+    - '梳理滑动窗口法、早期失效标记、分段归一化等预处理手段在RUL预测场景中的适用性。'
+    - '整理原始数据样例及可视化样本（如传感器序列、退化趋势图），用于提示词设计中的上下文补充。'
+
+  running-experiments:
+    - '不实际训练模型，而是复现已有论文中的关键工作流设计与输入输出结构。'
+    - '归纳不同模型对提示词/输入嵌入的需求：如输入维度、时间步长度、先验信息提示等。'
+    - '可采用伪代码、模块图、Token流示意图描述Transformer类方法的预测流程及注意力分布特性。'
+    - '若涉及多模态数据（如传感器+文本说明），可设计提示组合与注意机制适配策略。'
+
+  results-interpretation:
+    - '对比不同模型在准确率（RMSE、MAE）、鲁棒性、提前预警能力等指标上的优势。'
+    - '从提示词设计角度分析prompt结构（如位置嵌入、语义引导词）如何影响模型性能与泛化能力。'
+    - '绘制不同模型在典型样本上的预测曲线，展示其失效点前后的拟合趋势与偏差行为。'
+    - '深入分析Transformer类结构在RUL任务中的注意力迁移模式及其稳定性对比。'
+
+  report-writing:
+    - '撰写一篇聚焦“RUL预测工作流与提示词设计”的结构化技术报告，内容结构包括：'
+    - '- 引言（背景与研究意义）'
+    - '- 时序预测模型综述（结构对比与机制分析）'
+    - '- 数据预处理与特征建模策略'
+    - '- 提示词设计与工作流规范化模板'
+    - '- 案例复现与结构对比分析'
+    - '- 结论与未来趋势（如多模态融合、可解释性设计）'
+    - '所有图表应通过\includegraphics 引入，图注清晰，风格统一，数据来源注明。'
+
+  report-refinement:
+    - '对整份文档进行结构优化、语言润色与引用文献的完整性校验。'
+    - '使用Latex格式整理内容，确保公式编号、图表对齐、引用一致性符合期刊/会议格式要求。'
+    - '添加摘要、关键词、图表目录、参考文献列表，整体风格统一、可复用性高。'
+    
+  report-translation:
+    - '请在保持公式与引用不变的前提下，将整份报告进行翻译，并确保术语准确。'
+  

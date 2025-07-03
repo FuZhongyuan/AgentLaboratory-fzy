@@ -121,6 +121,7 @@ function initConfigurationFeatures() {
     const useCustomRadio = document.getElementById('use-custom');
     const templateSection = document.getElementById('template-selection');
     const customSection = document.getElementById('custom-config-section');
+    const templateSelect = document.getElementById('template-select');
     
     if (useTemplateCustomRadio && useCustomRadio) {
         // 模板作为基础并自定义切换事件
@@ -130,8 +131,9 @@ function initConfigurationFeatures() {
                 customSection.classList.remove('d-none');
                 
                 // 加载选中的模板到自定义表单
-                const selectedTemplate = document.querySelector('input[name="template-option"]:checked').value;
-                fetchConfigTemplate(selectedTemplate);
+                if (templateSelect) {
+                    fetchConfigTemplate(templateSelect.value);
+                }
             }
         });
         
@@ -145,15 +147,11 @@ function initConfigurationFeatures() {
     }
     
     // 处理模板选择变更
-    const templateOptions = document.querySelectorAll('input[name="template-option"]');
-    if (templateOptions.length > 0) {
-        templateOptions.forEach(option => {
-            option.addEventListener('change', function() {
-                // 如果当前是"使用模板作为基础并自定义"模式，则加载模板到表单
-                if (useTemplateCustomRadio && useTemplateCustomRadio.checked) {
-                    fetchConfigTemplate(this.value);
-                }
-            });
+    if (templateSelect) {
+        templateSelect.addEventListener('change', function() {
+            if (useTemplateCustomRadio && useTemplateCustomRadio.checked) {
+                fetchConfigTemplate(this.value);
+            }
         });
     }
     
@@ -236,11 +234,49 @@ function initConfigurationFeatures() {
     }
     
     // 初始加载默认配置
-    if (templateOptions.length > 0) {
-        const defaultTemplate = document.querySelector('input[name="template-option"]:checked');
-        if (defaultTemplate && useTemplateCustomRadio && useTemplateCustomRadio.checked) {
-            fetchConfigTemplate(defaultTemplate.value);
-        }
+    if (templateSelect && useTemplateCustomRadio && useTemplateCustomRadio.checked) {
+        fetchConfigTemplate(templateSelect.value);
+    }
+
+    // -------- PDF 选择与上传 --------
+    // 容器元素
+    const pdfListContainer = document.getElementById('pdf-list');
+    if (pdfListContainer) {
+        fetchUserPdfs();
+    }
+
+    // 上传按钮跳转
+    const openUploadBtn = document.getElementById('open-upload-page');
+    if (openUploadBtn) {
+        openUploadBtn.addEventListener('click', () => {
+            window.location.href = '/upload';
+        });
+    }
+
+    function fetchUserPdfs() {
+        fetch('/api/user_pdfs').then(r=>r.json()).then(data=>{
+            if (!data.pdfs) { pdfListContainer.innerHTML = '<p class="text-muted">No PDFs</p>'; return; }
+            pdfListContainer.innerHTML = '';
+            data.pdfs.forEach(pdf=>{
+                const div = document.createElement('div');
+                div.className='d-flex align-items-center mb-2';
+                div.innerHTML = `<input type="checkbox" class="form-check-input me-2 pdf-checkbox" value="${pdf.path}">`+
+                               `<span class="flex-grow-1">${pdf.filename}</span>`+
+                               `<button type="button" class="btn btn-sm btn-outline-danger ms-2 delete-pdf" data-id="${pdf.id}"><i class="bi bi-trash"></i></button>`;
+                pdfListContainer.appendChild(div);
+            });
+            // 绑定删除
+            pdfListContainer.querySelectorAll('.delete-pdf').forEach(btn=>{
+                btn.addEventListener('click', function(){
+                    const pid = this.getAttribute('data-id');
+                    if (confirm('Delete this PDF?')) {
+                        fetch(`/api/delete_pdf/${pid}`, {method:'DELETE'}).then(r=>r.json()).then(()=>{
+                            fetchUserPdfs();
+                        });
+                    }
+                });
+            });
+        });
     }
 }
 
@@ -597,6 +633,13 @@ function populateConfigForm(config) {
             toggleAdvancedBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
         }
     }
+
+    // 目标论文字数
+    const wordCountInput = document.getElementById('paper-word-count');
+    if (wordCountInput) {
+        const wc = config['paper-word-count'];
+        wordCountInput.value = wc && !isNaN(wc) ? wc : 4000;
+    }
 }
 
 /**
@@ -687,6 +730,24 @@ function collectCustomConfig() {
         config['task-notes']['report-translation'] = reportTranslationNotes.split('\n').filter(note => note.trim() !== '');
     }
     
+    // 添加目标论文字数
+    const wordCount = parseInt(document.getElementById('paper-word-count').value);
+    config['paper-word-count'] = isNaN(wordCount) ? 4000 : wordCount;
+
+    // -------- PDF 路径 --------
+    const pdfChecks = document.querySelectorAll('.pdf-checkbox:checked');
+    if (pdfChecks.length > 0) {
+        config['pdf-paths'] = Array.from(pdfChecks).map(cb=>cb.value);
+    }
+
+    // -------- 启用的子任务 --------
+    const subtaskChecks = document.querySelectorAll('.subtask-checkbox');
+    const enabledSubtasks = Array.from(subtaskChecks).filter(cb=>cb.checked).map(cb=>cb.value);
+    if (enabledSubtasks.length > 0 && enabledSubtasks.length < 8) {
+        // 仅当用户做了筛选且不是全部勾选时写入，全部勾选可省略
+        config['enabled-subtasks'] = enabledSubtasks;
+    }
+
     return config;
 }
 
@@ -707,7 +768,8 @@ function startResearch(topic, options = {}) {
     
     if (useTemplateCustom) {
         // 获取选中的模板
-        const selectedTemplate = document.querySelector('input[name="template-option"]:checked').value;
+        const templateSelect = document.getElementById('template-select');
+        const selectedTemplate = templateSelect ? templateSelect.value : '';
         
         // 收集自定义配置
         const customConfig = collectCustomConfig();

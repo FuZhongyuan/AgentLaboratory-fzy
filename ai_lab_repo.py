@@ -12,6 +12,8 @@ import json
 import time
 import multiprocessing
 from tools import *
+import os
+from inference import query_model
 
 GLOBAL_AGENTRXIV = None
 DEFAULT_LLM_BACKBONE = "o4-mini-yunwu"
@@ -20,7 +22,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, datasolver_max_steps=3, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None, language="English"):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, datasolver_max_steps=3, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, state_callback=None, language="English", paper_word_count: int = 4000, pdf_paths: list | None = None, enabled_subtasks: list | None = None):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -46,6 +48,8 @@ class LaboratoryWorkflow:
         self.num_papers_lit_review = num_papers_lit_review
         self.state_callback = state_callback
         self.language = language  # 研究报告目标语言
+        # 用户提供的本地 PDF 路径
+        self.pdf_paths = pdf_paths or []
 
         self.print_cost = True
         self.review_override = True # should review be overridden?
@@ -63,6 +67,8 @@ class LaboratoryWorkflow:
         self.mlesolver_max_steps = mlesolver_max_steps
         self.papersolver_max_steps = papersolver_max_steps
         self.datasolver_max_steps = datasolver_max_steps
+        # 目标论文字数（默认4000，由配置文件或前端输入覆盖）
+        self.paper_word_count = int(paper_word_count) if paper_word_count else 4000
 
         self.phases = [
             ("literature review", ["literature review"]),
@@ -106,6 +112,8 @@ class LaboratoryWorkflow:
         self.ml_engineer = MLEngineerAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
         self.sw_engineer = SWEngineerAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
 
+        # 用户自定义需执行的子任务（None 表示全部执行）
+        self.enabled_subtasks = set(enabled_subtasks) if enabled_subtasks else None
 
     def set_model(self, model):
         self.set_agent_attr("model", model)
@@ -117,7 +125,7 @@ class LaboratoryWorkflow:
         @param phase: (str) phase string
         @return: None
         """
-        print(f"为了节约资源，跳过状态保存")
+        print(f"To save resources, skip state saving")
         return
         state_file = None
         
@@ -175,6 +183,81 @@ class LaboratoryWorkflow:
         self.ml_engineer.reset()
         self.sw_engineer.reset()
 
+        # ===================== Local PDF Support =====================
+        self._ingest_local_pdfs()
+
+    def _ingest_local_pdfs(self):
+        """Read user-provided local PDFs, summarise them and add to literature review once."""
+        # Skip if no local pdfs or already processed
+        if not getattr(self, "pdf_paths", None):
+            return
+
+        # Prevent duplicate processing in case literature_review called multiple times
+        if hasattr(self, "_local_pdfs_ingested") and self._local_pdfs_ingested:
+            return
+
+        from pathlib import Path
+        from inference import query_model
+
+        # Use helper from AgentRxiv to read pdf pages
+        def _read_pdf(pdf_file):
+            try:
+                from PyPDF2 import PdfReader
+                reader = PdfReader(pdf_file)
+                text = ""
+                for page in reader.pages:
+                    pg_txt = page.extract_text() or ""
+                    text += pg_txt + "\n"
+                return text
+            except Exception as e:
+                print(f"[LocalPDF] Failed to read {pdf_file}: {e}")
+                return ""
+
+        model_for_summary = None
+        if isinstance(self.phase_models, dict):
+            model_for_summary = self.phase_models.get("literature review")
+        if not model_for_summary:
+            model_for_summary = self.model_backbone if isinstance(self.model_backbone, str) else DEFAULT_LLM_BACKBONE
+
+        for pdf_path in self.pdf_paths:
+            pdf_path = os.path.expanduser(pdf_path)
+            if not os.path.exists(pdf_path):
+                print(f"[LocalPDF] File not found: {pdf_path}")
+                continue
+
+            full_text = _read_pdf(pdf_path)
+            if not full_text:
+                continue
+
+            # Limit prompt length to avoid excessive tokens
+            prompt_text = full_text[:15000]
+
+            try:
+                summary = query_model(
+                    prompt=prompt_text,
+                    system_prompt="Please provide a concise, technical 10 sentence summary of this paper.",
+                    openai_api_key=self.openai_api_key,
+                    model_str=model_for_summary,
+                    temp=0.3,
+                    print_cost=False
+                )
+            except Exception as e:
+                print(f"[LocalPDF] Summary generation failed for {pdf_path}: {e}")
+                summary = "Summary generation failed."
+
+            review_entry = {
+                "arxiv_id": f"LOCAL:{Path(pdf_path).name}",
+                "full_text": full_text,
+                "summary": summary.strip()
+            }
+
+            # Avoid duplicates
+            duplicate = any(p["arxiv_id"] == review_entry["arxiv_id"] for p in self.phd.lit_review)
+            if not duplicate:
+                self.phd.lit_review.append(review_entry)
+
+        self._local_pdfs_ingested = True
+
     def perform_research(self):
         """
         Loop through all research phases
@@ -184,6 +267,12 @@ class LaboratoryWorkflow:
             phase_start_time = time.time()  # Start timing the phase
             if self.verbose: print(f"{'*'*50}\nBeginning phase: {phase}\n{'*'*50}")
             for subtask in subtasks:
+                # 如果用户选择性执行子任务，则跳过未选中的子任务
+                if self.enabled_subtasks is not None and subtask not in self.enabled_subtasks:
+                    if self.verbose:
+                        print(f"[跳过] 子任务 '{subtask}' 已被配置为不执行，直接标记完成。")
+                    self.phase_status[subtask] = True
+                    continue
                 if self.agentRxiv:
                     if self.verbose: print(f"{'&' * 30}\n[Lab #{self.lab_index} Paper #{self.paper_index}] Beginning subtask: {subtask}\n{'&' * 30}")
                 else:
@@ -300,7 +389,7 @@ class LaboratoryWorkflow:
         # instantiate mle-solver
         from papersolver import PaperSolver
         self.reference_papers = []
-        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=self.research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=self.compile_pdf, save_loc=self.lab_dir)
+        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=self.research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=self.compile_pdf, save_loc=self.lab_dir, target_word_count=self.paper_word_count)
         # run initialization for solver
         solver.initial_solve()
         # run solver for N mle optimization steps
@@ -530,6 +619,8 @@ class LaboratoryWorkflow:
         @return: (bool) whether to repeat the phase
         """
         arx_eng = ArxivSearch()
+        # Ingest user-provided local PDFs (only runs once)
+        self._ingest_local_pdfs()
         max_tries = self.max_steps # lit review often requires extra steps
         # get initial response from PhD agent
         resp = self.phd.inference(self.research_topic, "literature review", step=0, temp=0.4)
@@ -541,7 +632,7 @@ class LaboratoryWorkflow:
             
             # 在每次迭代开始时，提供已添加论文的列表信息
             if len(self.phd.lit_review) > 0:
-                added_papers = "已添加的论文列表:\n" + "\n".join([f"- {paper['arxiv_id']}: {paper['summary'][:100]}..." for paper in self.phd.lit_review])
+                added_papers = "Already added papers:\n" + "\n".join([f"- {paper['arxiv_id']}: {paper['summary'][:100]}..." for paper in self.phd.lit_review])
                 feedback = added_papers + "\n\n"
             
             # grab summary of papers from arxiv
@@ -560,7 +651,7 @@ class LaboratoryWorkflow:
                 # 检查是否已经下载过这篇论文
                 existing_paper = next((paper for paper in self.phd.lit_review if paper["arxiv_id"] == query), None)
                 if existing_paper:
-                    feedback = f"论文 {query} 已经下载过，无需重复下载。以下是论文内容：\n{existing_paper['full_text']}"
+                    feedback = f"Paper {query} was already downloaded, skipping re-download. Here is its content:\n{existing_paper['full_text']}"
                 else:
                     if self.agentRxiv and "AgentRxiv" in query: full_text = GLOBAL_AGENTRXIV.retrieve_full_text(query,)
                     else: full_text = arx_eng.retrieve_full_paper_text(query)
@@ -787,7 +878,7 @@ class AgentRxiv:
                     # 使用用户显式提供的模型名称和 API Key 生成摘要
                     self.summaries[arxiv_id] = query_model(
                         prompt=self.pdf_text[arxiv_id],
-                        system_prompt="Please provide a 5 sentence summary of this paper.",
+                        system_prompt="Please provide a 10 sentence summary of this paper.",
                         openai_api_key=self.openai_api_key,
                         model_str=self.default_model
                     )
@@ -866,6 +957,12 @@ def parse_yaml(yaml_file_loc):
     else: parser.construct_agentRxiv = False
     if 'agentrxiv-papers' in agentlab_data: parser.agentrxiv_papers = agentlab_data["agentrxiv-papers"]
     else:  parser.agentrxiv_papers = 5
+
+    # NEW: user-specified local PDF paths
+    if 'pdf-paths' in agentlab_data:
+        parser.pdf_paths = agentlab_data['pdf-paths']
+    else:
+        parser.pdf_paths = []
 
     if 'lab-index' in agentlab_data: parser.lab_index = agentlab_data["lab-index"]
     else: parser.lab_index = 0
@@ -1024,7 +1121,8 @@ if __name__ == "__main__":
                     lab_dir=lab_dir,
                     agentRxiv=True,
                     agentrxiv_papers=args.agentrxiv_papers,
-                    language=args.language
+                    language=args.language,
+                    pdf_paths=getattr(args, 'pdf_paths', []),
                 )
                 lab_instance.perform_research()
                 time_str += str(time.time() - time_now) + " | "
@@ -1069,7 +1167,8 @@ if __name__ == "__main__":
                 agentRxiv=False,
                 lab_index=lab_index,
                 lab_dir=os.path.join(".", lab_direct),
-                language=args.language
+                language=args.language,
+                pdf_paths=getattr(args, 'pdf_paths', []),
             )
             lab.perform_research()
             time_str += str(time.time() - time_now) + " | "

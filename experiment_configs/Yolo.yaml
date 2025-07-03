@@ -1,0 +1,96 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：Agent综述与实验对比分析
+research-topic: "Agent综述与实验对比分析"
+research-dir-path: "Agent_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "your_key"
+
+enabled-subtasks:
+- literature review
+- plan formulation
+- results interpretation
+- report writing
+- report translation
+- report refinement
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "English"
+
+# 需要自动文献综述
+# 一共检索的文献综述数量
+num-papers-lit-review: 15
+# 从文献综述数量中选择多少篇进行写作
+agentrxiv-papers: 15
+# 需要写作的论文数量
+num-papers-to-write: 1
+paper-word-count: 8000
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+datasolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+    - '系统调研YOLO系列目标检测模型的发展历程，从YOLOv1到当前最新版本（如YOLOv9、YOLO-NAS等）。'
+    - '重点综述各代YOLO模型的结构演进、检测机制变迁与关键技术突破（如Anchor机制、自注意力、RepVGG、解耦头等）。'
+    - '查阅并引用原始论文、官方博客、GitHub文档、评测报告和权威综述资料，结合结构图与流程图强化理解。'
+    - '可下载或自绘YOLO各版本结构图、改进点对比图或检测性能趋势图，用于清晰呈现演进逻辑。'
+
+  plan-formulation:
+    - '撰写综述论文的核心目标是分析YOLO系列模型在目标检测领域的演进、关键机制与性能表现。'
+    - '围绕“速度-精度权衡”“检测头设计”“特征金字塔构建”“训练策略演进”等四大技术维度展开分析。'
+    - '规划论文结构：从发展背景、模型结构演进、技术细节对比，到性能评估与未来展望。'
+
+  data-preparation:
+    - '主要依赖已有目标检测基准数据集（如COCO、Pascal VOC）中的公开结果进行分析。'
+    - '引入COCO类别分布与目标尺寸分布图表，用于说明模型设计动机与评估挑战。'
+    - '如需结构辅助图示，可绘制YOLO各版本网络架构、检测头结构与训练策略示意图。'
+
+  running-experiments:
+    - '本任务不进行模型训练，仅基于已有文献与GitHub开源项目结果汇总性能数据。'
+    - '引用COCO、VOC等标准数据集下YOLO系列模型的mAP、FPS、模型参数量等性能指标。'
+    - '通过表格、柱状图或折线图形式展示不同版本YOLO的速度-精度曲线与计算量变化趋势。'
+    - '如有需要，可重绘结构模块图（如CSP模块、Decoupled Head、SPP结构等）。'
+
+  results-interpretation:
+    - '系统分析YOLO各版本在检测精度、推理速度、模型复杂度等维度的优劣与优化策略。'
+    - '深入剖析如CSPNet、ELAN、PANet、Decoupled Head等模块对检测性能的提升机制。'
+    - '结合结构图分析从YOLOv4/v5的轻量优化，到YOLOv7的解耦头与YOLOv8的Anchor-free架构的演进逻辑。'
+    - '评估YOLO-NAS或其他最新变种的创新性、工业可落地性与开源生态影响力。'
+
+  report-writing:
+    - '生成符合学术综述规范的Latex论文，结构包括：'
+    - '- 引言（目标检测背景与YOLO的重要地位）'
+    - '- 模型发展综述（YOLOv1–v9及其变体）'
+    - '- 技术演进分析（结构、机制、优化策略）'
+    - '- 性能对比分析（引文献数据、图表分析）'
+    - '- YOLO未来趋势与研究空白'
+    - '所有图表通过\includegraphics 引入，图注清晰、风格统一，适当使用算法伪代码展示机制细节。'
+
+  report-refinement:
+    - '完成Latex文档的语言校对、逻辑结构优化与图文统一排版。'
+    - '确保公式、图表、章节编号一致，引用格式（如IEEE、ACM等）规范。'
+    - '补充摘要、关键词、图表目录与参考文献条目，使论文符合标准学术综述格式。'
+
+  report-translation:
+    - '请在保持公式与引用不变的前提下，将整份报告进行翻译，并确保术语准确。'
+    

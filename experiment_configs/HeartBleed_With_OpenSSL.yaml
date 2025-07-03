@@ -1,0 +1,86 @@
+# 开启用户交互模式
+copilot-mode: False
+
+# 研究主题：HeartBleed漏洞分析与OpenSSL修复
+research-topic: "HeartBleed漏洞分析与OpenSSL修复"
+research-dir-path: "HeartBleed_With_OpenSSL_research_dir"
+
+# 使用OpenAI API，默认设置即可
+api-key: "your_key"
+
+# 使用最新模型处理Latex论文写作与图生成任务
+# llm-backend: "deepseek-reasoner"
+# lit-review-backend: "deepseek-reasoner"
+llm-backend: "o4-mini-yunwu"
+lit-review-backend: "o4-mini-yunwu"
+
+# 基础语言设为中文
+language: "English"
+
+# 不需要自动文献综述（你可以补充，如果想要的话可设置num-papers-lit-review: 5）
+num-papers-lit-review: 10
+agentrxiv-papers: 10
+num-papers-to-write: 1
+paper-word-count: 8000
+
+# 不需要并行Agent
+parallel-labs: False
+
+# 实验流程控制参数
+mlesolver-max-steps: 3
+datasolver-max-steps: 3
+papersolver-max-steps: 5
+lab-index: 0
+load-existing: False
+# load-existing-path: "state_saves/Paper0.pkl"
+except-if-fail: False
+compile-latex: True  # 自动编译LaTeX生成PDF
+
+# 自定义任务说明
+task-notes:
+  literature-review:
+    - '系统调研TLS/SSL协议的发展历程与核心设计思想，重点关注TLS 1.0/1.1/1.2的加密与握手机制。'
+    - '深入剖析TLS/SSL中的Heartbleed漏洞（CVE-2014-0160）原理，包括心跳扩展（Heartbeat Extension）机制设计缺陷。'
+    - '查阅相关漏洞披露报告、安全研究论文与官方补丁公告（如OpenSSL安全通告），理解漏洞的成因与影响范围。'
+    - '研究其他相关经典SSL/TLS漏洞（如BEAST、POODLE、CRIME）作为技术背景补充，突出Heartbleed的特殊性与危害性。'
+
+  plan-formulation:
+    - '本实验任务目标为还原并理解Heartbleed攻击原理、漏洞产生机制、利用方式与实际危害，提升网络安全漏洞分析与实践能力。'
+    - '明确研究路径：协议学习 → 漏洞原理 → 漏洞环境搭建 → 攻击复现 → 结果分析与防护对策建议。'
+    - '计划报告结构：协议背景、漏洞机制分析、攻击复现过程、结果与危害评估、防护建议与结论。'
+
+  data-preparation:
+    - '准备Heartbleed攻击实验环境：使用VirtualBox或Docker构建含有漏洞版本OpenSSL（1.0.1~1.0.1f）的Ubuntu系统。'
+    - '下载配置已知受影响版本的服务端（如Apache+OpenSSL）或使用Metasploit自带漏洞环境（如Metasploitable 2）。'
+    - '准备攻击工具，如Python编写的Heartbleed PoC脚本、Metasploit模块或Kali Linux自带漏洞利用脚本。'
+
+  running-experiments:
+    - '部署实验环境，运行受漏洞影响的TLS服务。使用PoC脚本或Metasploit复现Heartbleed攻击，获取服务内存数据片段。'
+    - '记录攻击请求与响应报文，分析内存泄露数据内容，验证可获取如用户名、密码、证书私钥等敏感信息。'
+    - '可尝试复现多个阶段的攻击：构造心跳包 → 服务返回内存数据 → 提取有效敏感信息。'
+    - '抓包分析攻击流量，辅助理解漏洞触发流程；必要时展示关键数据结构（如HeartbeatRequest格式）。'
+
+  results-interpretation:
+    - '分析攻击实验结果，识别泄露数据的类型、来源及对系统安全性的潜在影响。'
+    - '结合攻击流程，详细解释Heartbleed是如何绕过边界检查导致信息泄露的。'
+    - '评估Heartbleed对TLS保密性、完整性、可用性构成的威胁，结合实际案例（如Yahoo邮箱泄露事件）。'
+    - '对比Heartbleed与其他TLS漏洞，分析其在漏洞利用门槛、攻击影响与修复难度等方面的特点。'
+
+  report-writing:
+    - '撰写符合学术规范的实验研究报告，结构包括：'
+    - '- 引言（TLS协议简述与研究动机）'
+    - '- 漏洞原理（Heartbleed设计缺陷分析）'
+    - '- 攻击实验（实验步骤、工具、环境配置）'
+    - '- 攻击结果（抓包数据、内存泄露内容、分析截图）'
+    - '- 防护建议（OpenSSL升级、心跳扩展禁用、安全审计）'
+    - '- 总结与反思（漏洞成因教训、对协议设计的启示）'
+    - '报告应配有协议结构图、漏洞流程图、实验截图，图注完整，内容层次清晰。'
+
+  report-refinement:
+    - '进行实验报告的语言表达润色与结构优化，明确技术细节描述，保持术语准确性。'
+    - '整理引用文献，涵盖RFC文档、安全公告、技术博客、学术论文等，符合IEEE或国标引用格式。'
+    - '确保报告中所有图表编号统一，截图清晰，注释完整，突出每一步实验目标与结论。'
+    - '可补充附录，包括攻击脚本源代码、配置命令、抓包样本，以提升报告完整性与复现性。'
+
+  report-translation:
+    - '请在保持公式与引用不变的前提下，将整份报告进行翻译，并确保术语准确。'

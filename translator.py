@@ -117,6 +117,23 @@ def _iterative_translate_segment(original: str, target_lang: str, model: str, ap
     return improved if improved else first_pass
 
 
+def _dedup_end_document(tex: str) -> str:
+    """确保整篇 LaTeX 文档只保留最后一个 \end{document}，删除其他多余的出现。"""
+    # 找到所有 \end{document} 的位置
+    pattern = re.compile(r"\\end\{document\}")
+    matches = list(pattern.finditer(tex))
+    # 若出现 0 或 1 次，直接返回
+    if len(matches) <= 1:
+        return tex
+
+    # 记录最后一次出现的位置
+    last_start = matches[-1].start()
+    # 删除最后一次之前的所有 \end{document}
+    cleaned_head = pattern.sub("", tex[:last_start])
+    cleaned_tex = cleaned_head + tex[last_start:]
+    return cleaned_tex
+
+
 def translate_report(report_text: str, target_lang: str = "中文", *, model_name: str | None = None, api_key: str | None = None) -> Tuple[str, bool]:
     """多轮高质量翻译接口，先按 section 拆分，再对每段进行两轮翻译，最后拼接与宏调整。"""
     if api_key is None:
@@ -143,6 +160,9 @@ def translate_report(report_text: str, target_lang: str = "中文", *, model_nam
 
     # 3. 调整 LaTeX 宏
     translated_full = _adjust_latex_macro(translated_full, target_lang)
+
+    # 4. 移除多余的 \end{document}
+    translated_full = _dedup_end_document(translated_full)
 
     success = translated_full.strip() != report_text.strip()
 

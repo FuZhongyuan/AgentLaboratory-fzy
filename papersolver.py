@@ -235,7 +235,7 @@ Please make sure the abstract reads smoothly and is well-motivated. This should 
 }
 
 class PaperSolver:
-    def __init__(self, llm_str, notes=None, max_steps=10, insights=None, plan=None, exp_code=None, exp_results=None, lit_review=None, ref_papers=None, topic=None, openai_api_key=None, compile_pdf=True, save_loc=None):
+    def __init__(self, llm_str, notes=None, max_steps=10, insights=None, plan=None, exp_code=None, exp_results=None, lit_review=None, ref_papers=None, topic=None, openai_api_key=None, compile_pdf=True, save_loc=None, target_word_count: int = 4000):
         self.supress_print = True
         if notes is None: self.notes = []
         else: self.notes = notes
@@ -266,6 +266,8 @@ class PaperSolver:
         self.section_related_work = {}
         self.openai_api_key = openai_api_key
         self.max_attempts = 30  # 默认最多尝试 30 轮
+        # 目标论文字数，可通过配置传入
+        self.target_word_count = int(target_word_count) if target_word_count else 4000
 
     def solve(self):
         num_attempts = 0
@@ -535,8 +537,10 @@ class PaperSolver:
         else: section_cmd = ""
         paper_len = sum([i.strip(string.punctuation).isalpha() for i in ("".join(self.paper_lines)).split()])
         #paper_len2 = len(("".join(self.paper_lines)).split())
-        if paper_len < 4000: paper_progress = f"The current length of the paper is {paper_len} words, you must increase this by {4000-paper_len} words."
-        else: paper_progress = ""
+        if paper_len < self.target_word_count:
+            paper_progress = f"The current length of the paper is {paper_len} words, you must increase this by {self.target_word_count - paper_len} words."
+        else:
+            paper_progress = ""
         if not self.supress_print: print(paper_progress)
         cmd_set = f"The following are commands you have access to: {self.command_descriptions()}\n." if commands else ""
         if len(self.ref_papers) == 0: ref_papers = ""
@@ -564,7 +568,7 @@ class PaperSolver:
             f"Provided was an interpretation of the experimental results:\n{self.insights}\n"
             f"Your writing style should be boring and objective.\n"
             # transition
-            f"Your goal is to write a research paper as well as possible. You will receive a score after you write the paper and should aim to maximize the score by writing a high quality research paper. The paper length should be 8 pages or 4000 words in total. It should be quite long and comprehensive. Remember, the paper MUST BE LONG. {paper_progress}\n"
+            f"Your goal is to write a research paper as well as possible. You will receive a score after you write the paper and should aim to maximize the score by writing a high quality research paper. The paper length should be {self.target_word_count} words in total. It should be quite long and comprehensive. Remember, the paper MUST BE LONG. {paper_progress}\n"
             # COMMAND SET
             f"{cmd_set}\n"
             # PAPER
@@ -586,7 +590,7 @@ class PaperSolver:
         Provide role description
         @return: (str) role description
         """
-        return "You are a computer science PhD student at a top university who has submitted their paper to an ML conference called ICLR. Your goal was to write a research paper and get high scores from the reviewers so that it get accepted to the conference. Your paper should be approximately 8 pages and around 4000 words. Your article should ONLY CONTAIN EIGHT sections as follows: 1. Abstract 2. Introduction, 3. Background, 4. Related Work 5. Methods, 6. Experimental Setup 7. Results, and 8. Discussion.\n"
+        return f"You are a computer science PhD student at a top university who has submitted their paper to an ML conference called ICLR. Your goal was to write a research paper and get high scores from the reviewers so that it get accepted to the conference. Your paper should be approximately and around {self.target_word_count} words. Your article should ONLY CONTAIN EIGHT sections as follows: 1. Abstract 2. Introduction, 3. Background, 4. Related Work 5. Methods, 6. Experimental Setup 7. Results, and 8. Discussion.\n"
 
 
     def phase_prompt(self,):
